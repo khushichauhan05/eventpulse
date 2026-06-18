@@ -1,38 +1,146 @@
 # EventPulse
 
-EventPulse is a real-time fraud-detection pipeline built with Go, Apache Kafka, PostgreSQL, and Docker Compose.
+![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
+![Kafka](https://img.shields.io/badge/Kafka-231F20?logo=apachekafka&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+
+EventPulse is a Dockerized, event-driven microservices platform built with Go, Apache Kafka, PostgreSQL, and Docker Compose. It showcases real-time fraud detection, distributed systems design, and a Kafka-based streaming pipeline. Transaction events are ingested in real time, scored by a streaming analytics service, converted into fraud alerts, and stored for retrieval through REST APIs.
 
 ## Project Overview
 
 The system accepts transaction events over HTTP, scores them in a streaming analytics worker, generates alerts for high-risk activity, and stores those alerts in PostgreSQL.
+
+## Tech Stack
+
+### Backend
+
+- Go (Golang)
+- REST APIs
+- Microservices
+
+### Messaging & Event Streaming
+
+- Apache Kafka
+- Kafka Consumer Groups
+- Event-Driven Architecture
+
+### Database
+
+- PostgreSQL
+
+### Infrastructure & DevOps
+
+- Docker
+- Docker Compose
+- Multi-Stage Docker Builds
+
+### Tools
+
+- Git
+- GitHub
+
+## Project Structure
+
+```text
+eventpulse/
+├── services/
+│   ├── api-gateway/
+│   ├── analytics-service/
+│   └── alert-service/
+├── internal/
+│   ├── config/
+│   └── logger/
+├── db/
+│   └── init.sql
+├── docs/
+│   └── screenshots/
+├── docker-compose.yml
+└── README.md
+```
+
+## Resume Highlights
+
+- Built a distributed event-driven microservices platform using Go and Kafka.
+- Implemented real-time fraud detection through asynchronous event processing.
+- Designed Kafka producer-consumer pipelines with consumer groups and offset management.
+- Containerized services using Docker and Docker Compose.
+- Integrated PostgreSQL for persistent alert storage and retrieval.
+
+## Key Features
+
+- Real-time event ingestion through `POST /events`.
+- Kafka messaging pipeline across raw and processed topics.
+- Risk scoring engine that flags high-value transactions.
+- Fraud alert generation for high-risk events.
+- PostgreSQL persistence for alert history.
+- Consumer groups for scalable event processing.
+- Dockerized deployment with multi-stage builds.
+- End-to-end streaming architecture from API to database.
+
+## Concepts Demonstrated
+
+- Microservices
+- Event-Driven Architecture
+- Distributed Systems
+- Apache Kafka
+- Consumer Groups
+- Message Streaming
+- REST APIs
+- Docker
+- PostgreSQL
+- Fault Tolerance
+- Service Communication
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     Client[Client] --> GW[API Gateway]
-    GW -->|events.raw| K1[(Kafka)]
-    K1 --> AN[Analytics Service]
-    AN -->|events.processed| K2[(Kafka)]
-    K2 --> AL[Alert Service]
-    AL -->|alerts| K3[(Kafka)]
+    GW -->|events.raw| KT1[(Kafka Topics)]
+    KT1 --> AN[Analytics Service]
+    AN -->|events.processed| KT2[(Kafka Topics)]
+    KT2 --> AL[Alert Service]
+    AL -->|alerts| KT3[(Kafka Topics)]
     AL --> PG[(PostgreSQL)]
     GW --> PG
 ```
 
-  Architecture screenshot:
+Architecture labels:
 
-  - [Architecture SVG](docs/screenshots/architecture.svg)
+- API Gateway
+- Kafka Topics
+- Analytics Service
+- Alert Service
+- PostgreSQL
 
-  Validation screenshot:
+Architecture screenshot:
 
-  - [Validation SVG](docs/screenshots/validation.svg)
+- [Architecture SVG](docs/screenshots/architecture.svg)
 
-## Services
+Validation screenshot:
+
+- [Validation SVG](docs/screenshots/validation.svg)
+
+## Microservices
 
 - `api-gateway`: exposes REST endpoints and publishes incoming events to Kafka.
 - `analytics-service`: consumes raw events, calculates risk scores, and publishes processed events.
 - `alert-service`: consumes processed events, generates alerts, publishes them to Kafka, and stores them in PostgreSQL.
+
+## End-to-End Flow
+
+`POST /events` -> `events.raw` -> Analytics Service -> `events.processed` -> Alert Service -> PostgreSQL -> `GET /alerts`
+
+## Validation Results
+
+### Event Processing Pipeline
+
+![Validation](https://chatgpt.com/c/docs/screenshots/validation.svg)
+
+### Architecture Diagram
+
+![Architecture](https://chatgpt.com/c/docs/screenshots/architecture.svg)
 
 ## Local Setup
 
@@ -126,6 +234,22 @@ curl "http://localhost:8080/alert?id=1"
 - If `POST /events` returns `kafka unavailable`, inspect `docker compose logs kafka api-gateway analytics-service alert-service`.
 - If `/alerts` is empty, publish a high-risk event with `amount > 10000` and recheck the alert-service logs.
 
+## Why This Project Matters
+
+- Demonstrates distributed systems concepts such as async event flow, service boundaries, and consumer groups.
+- Shows event-driven processing with Kafka as the backbone of communication.
+- Highlights asynchronous communication between independent services.
+- Uses Docker orchestration to keep the system reproducible locally.
+- Strong backend engineering signal for interview discussions around reliability, scaling, and observability tradeoffs.
+
+## Scalability Considerations
+
+- Horizontal scaling using Kafka consumer groups.
+- Independent service deployment.
+- Loose coupling through event-driven communication.
+- Cloud deployment readiness.
+- Database scalability considerations.
+
 ## Repository Quality
 
 - Clean-clone startup works without a pre-existing `.env` file.
@@ -140,7 +264,12 @@ curl "http://localhost:8080/alert?id=1"
 - Docker images use multi-stage builds.
 - Logging is structured with service names and log levels.
 
-## Portfolio Improvements
+## Related Docs
+
+- [Project Status](PROJECT_STATUS.md)
+- [Release Notes](RELEASE_NOTES.md)
+
+## Future Enhancements
 
 High-impact follow-ups:
 
@@ -149,3 +278,7 @@ High-impact follow-ups:
 3. Add integration tests with Testcontainers.
 4. Add idempotency keys for alert writes.
 5. Add an outbox pattern for atomic Kafka and Postgres consistency.
+
+## MIT License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
