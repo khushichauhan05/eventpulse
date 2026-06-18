@@ -18,7 +18,7 @@ import (
 type mockWriter struct{ err error }
 
 func (m *mockWriter) WriteMessages(_ context.Context, _ ...kafka.Message) error { return m.err }
-func (m *mockWriter) Close() error                                               { return nil }
+func (m *mockWriter) Close() error                                              { return nil }
 
 func newHandler(w *mockWriter) *handlers.GatewayHandler {
 	return &handlers.GatewayHandler{
