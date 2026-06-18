@@ -1,0 +1,301 @@
+---
+# Prometheus Deployment
+# Prometheus collects and stores time-series metrics from all EventPulse services.
+#
+# Metrics collected:
+#   - HTTP requests (api-gateway)
+#   - Kafka events processed (analytics-service)
+#   - Alerts generated (alert-service)
+#   - Resource usage (CPU, memory)
+#   - Pod health and uptime
+#
+# Service Discovery:
+#   - Automatically discovers pods with Prometheus scrape annotations
+#   - Monitors: api-gateway:8080, analytics-service:8081, alert-service:8082
+#
+# Data Retention:
+#   - 7 days of metrics (configurable)
+#   - Persistent storage via PVC (10Gi)
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: eventpulse
+  labels:
+    app: prometheus
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Uncomment for cloud environments
+  # storageClassName: fast-ssd
+
+---
+# Prometheus ConfigMap
+# Defines scrape targets and metrics collection intervals
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: eventpulse
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s          # Collect metrics every 15 seconds
+      evaluation_interval: 15s       # Evaluate alert rules every 15 seconds
+      external_labels:
+        cluster: eventpulse
+        environment: kubernetes
+
+    # EventPulse services scrape configuration
+    scrape_configs:
+    # API Gateway - exposes on :8080/metrics
+    - job_name: api-gateway
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - eventpulse
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: api-gateway
+      - source_labels: [__meta_kubernetes_pod_container_port_number]
+        action: keep
+        regex: "8080"
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      metrics_path: /metrics
+
+    # Analytics Service - exposes on :8081/metrics
+    - job_name: analytics-service
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - eventpulse
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: analytics-service
+      - source_labels: [__meta_kubernetes_pod_container_port_number]
+        action: keep
+        regex: "8081"
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      metrics_path: /metrics
+
+    # Alert Service - exposes on :8082/metrics
+    - job_name: alert-service
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - eventpulse
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: alert-service
+      - source_labels: [__meta_kubernetes_pod_container_port_number]
+        action: keep
+        regex: "8082"
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      metrics_path: /metrics
+
+    # Kubernetes API Server - built-in metrics
+    - job_name: kubernetes-apiservers
+      kubernetes_sd_configs:
+      - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+
+    # Kubernetes Nodes - node metrics
+    - job_name: kubernetes-nodes
+      kubernetes_sd_configs:
+      - role: node
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+---
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: eventpulse
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Use RWO PVC, requires Recreate strategy
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+      annotations:
+        prometheus.io/scrape: "false"  # Don't scrape itself to avoid loops
+    spec:
+      serviceAccountName: prometheus
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.50.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=7d
+        - --web.enable-lifecycle          # Allow /api/v1/admin/tsdb/delete_series
+
+        ports:
+        - containerPort: 9090
+          name: web
+          protocol: TCP
+
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+        - name: data
+          mountPath: /prometheus
+
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 9090
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+      volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: prometheus-pvc
+
+---
+# Prometheus ServiceAccount
+# Provides RBAC permissions to discover and scrape pods
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: eventpulse
+  labels:
+    app: prometheus
+
+---
+# Prometheus ClusterRole
+# Permissions to list/watch nodes, pods, services
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  - nodes/proxy
+  - pods
+  - services
+  - endpoints
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+# Prometheus ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: eventpulse
+
+---
+# Prometheus Service
+# Exposes Prometheus web UI and API on port 9090
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: eventpulse
+  labels:
+    app: prometheus
+  annotations:
+    description: "Prometheus metrics collection and storage (port 9090)"
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: web

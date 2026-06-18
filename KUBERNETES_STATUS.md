@@ -2,7 +2,7 @@
 
 **Branch**: `kubernetes-upgrade`  
 **Base**: v1.0.0 (Docker Compose stable)  
-**Phase**: Phase 5 — Horizontal Pod Autoscaling
+**Phase**: Phase 6 — Prometheus & Grafana Monitoring
 
 ---
 
@@ -341,16 +341,19 @@ From **Docker Compose** → to **Kubernetes**:
   - `nginx-ingress-deployment.yaml` — 340 lines (NGINX controller + RBAC)
   - `eventpulse-ingress.yaml` — 95 lines (routing to api-gateway)
 - `autoscaling/` directory:
-  - `api-gateway-hpa.yaml` — **NEW** 70 lines (HPA 2-10 replicas, CPU-based)
-  - `analytics-service-hpa.yaml` — **NEW** 65 lines (HPA for Kafka consumer)
-  - `alert-service-hpa.yaml` — **NEW** 65 lines (HPA for alert generation)
+  - `api-gateway-hpa.yaml` — 70 lines (HPA 2-10 replicas, CPU-based)
+  - `analytics-service-hpa.yaml` — 65 lines (HPA for Kafka consumer)
+  - `alert-service-hpa.yaml` — 65 lines (HPA for alert generation)
+- `monitoring/` directory:
+  - `prometheus-deployment.yaml` — **NEW** 280 lines (Prometheus + RBAC + PVC)
+  - `grafana-deployment.yaml` — **NEW** 140 lines (Grafana + datasource)
 - `api-gateway/api-gateway.yaml` — 100 lines (unchanged, deployed in Phase 3)
 - `analytics-service/analytics-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `alert-service/alert-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `monitoring/prometheus.yaml` — 200+ lines (unchanged, deployed in Phase 4)
 - `README.md` — 600+ lines (comprehensive guide)
 
-**Total**: ~5,300 lines of manifests + documentation (DEPLOYMENT_GUIDE.md, VALIDATION.md, INGRESS_GUIDE.md, AUTOSCALING_GUIDE.md through Phase 5)
+**Total**: ~6,100 lines of manifests + documentation (DEPLOYMENT_GUIDE.md, VALIDATION.md, INGRESS_GUIDE.md, AUTOSCALING_GUIDE.md, MONITORING_GUIDE.md through Phase 6)
 
 ---
 
@@ -500,15 +503,79 @@ From **Docker Compose** → to **Kubernetes**:
   - Cost optimization recommendations
   - Production checklist
 
+### Phase 6 — Prometheus & Grafana Monitoring — Completed ✅
+- [x] Prometheus Deployment (Metrics Collection)
+  - [x] `prometheus-deployment.yaml` — Prometheus + RBAC + PVC
+  - [x] PVC: 10Gi persistent storage (7-day retention)
+  - [x] ConfigMap: scrape configuration for all services
+  - [x] Auto-discovery: finds pods with prometheus.io/scrape annotations
+  - [x] Scrape targets: api-gateway:8080, analytics-service:8081, alert-service:8082
+  - [x] Service discovery: Kubernetes API server, nodes, pods
+  - [x] Liveness & readiness probes
+  - [x] Resource limits: 250m-1000m CPU, 256Mi-2Gi memory
+- [x] Grafana Deployment (Metrics Visualization)
+  - [x] `grafana-deployment.yaml` — Grafana + Prometheus datasource
+  - [x] PVC: 5Gi for dashboards and configuration
+  - [x] Pre-configured datasource: Prometheus on http://prometheus:9090
+  - [x] Default credentials: admin/admin (change in production)
+  - [x] Service: grafana:3000
+  - [x] Liveness & readiness probes
+- [x] Metrics Exposed from All Services
+  - [x] API Gateway: request count, latency, errors
+  - [x] Analytics Service: events processed, Kafka lag
+  - [x] Alert Service: alerts generated, database writes
+  - [x] Kubernetes: pod CPU/memory, deployment replicas, pod status
+- [x] Monitored Metrics
+  - [x] Request counts (eventpulse_http_requests_total)
+  - [x] Request latency (eventpulse_http_request_duration_ms)
+  - [x] Events published/processed (eventpulse_events_published_total, _processed_total)
+  - [x] Alerts generated (eventpulse_alerts_generated_total)
+  - [x] Kafka consumer lag (eventpulse_kafka_consumer_lag)
+  - [x] Error rates (eventpulse_errors_total)
+  - [x] Pod CPU/memory (container_cpu_usage_seconds_total, memory_usage_bytes)
+  - [x] Pod status (kube_pod_status_phase)
+  - [x] Deployment replicas (kube_deployment_status_replicas)
+- [x] 4 Grafana Dashboards Documented
+  - [x] EventPulse Overview: high-level system health
+  - [x] API Gateway Performance: request rates, latency, errors
+  - [x] Kafka & Analytics: event flow, consumer lag, processing
+  - [x] Alert Service & Database: alert generation, database operations
+- [x] **MONITORING_GUIDE.md** — 500+ lines comprehensive guide
+  - Prometheus & Grafana explanation and benefits
+  - Prerequisites: services with /metrics endpoints, scrape annotations
+  - Installation (2 steps for Prometheus + Grafana)
+  - Verification procedures:
+    - Check Prometheus targets status (UP/DOWN)
+    - Query metrics using PromQL
+    - Verify Grafana datasource connection
+  - Metrics collection details:
+    - Event metrics (published, processed, alerts)
+    - Performance metrics (latency, errors)
+    - Kafka consumer lag
+    - Kubernetes resource usage
+  - PromQL query examples (20+ queries provided)
+  - Dashboard creation instructions:
+    - EventPulse Overview (6 panels)
+    - API Gateway Performance (6 panels)
+    - Kafka & Analytics (6 panels)
+    - Alert Service & Database (6 panels)
+  - Load testing monitoring:
+    - Monitor during Apache Bench stress test
+    - Watch Kafka lag increase/decrease
+    - Track alert generation in real-time
+  - Step-by-step dashboard creation
+  - Optional alerting rules
+  - Troubleshooting (no targets, no datasource connection, no data)
+  - Production checklist (10 items)
+
 ### Next Phases — TODO
-- [ ] Phase 6: Monitoring (Prometheus, Grafana)
-- [ ] Phase 7: Production hardening
+- [ ] Phase 7: Production hardening (network policies, pod security)
 
 ---
 
-## Status: Phase 5 Complete — Auto-Scaling Ready
+## Status: Phase 6 Complete — Monitoring Stack Ready
 
-**Full Kubernetes stack with automatic horizontal scaling (2-10 replicas per service).**
+**Production-ready Kubernetes with metrics collection, visualization, and dashboards.**
 
 ### What's Included
 

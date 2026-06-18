@@ -1,0 +1,162 @@
+---
+# Grafana Deployment
+# Grafana visualizes metrics collected by Prometheus.
+#
+# Default credentials (CHANGE IN PRODUCTION):
+#   Username: admin
+#   Password: admin
+#
+# Dashboards included:
+#   - EventPulse Overview (request counts, alerts, events)
+#   - API Gateway Performance (latency, throughput, errors)
+#   - Kafka Metrics (events processed, lag, throughput)
+#   - Alert Service (alerts generated, error rates)
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: eventpulse
+  labels:
+    app: grafana
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# Grafana ConfigMap
+# Contains datasource configuration and dashboard definitions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: eventpulse
+  labels:
+    app: grafana
+data:
+  grafana.ini: |
+    [security]
+    admin_user = admin
+    admin_password = admin
+    disable_gravatar = true
+
+    [paths]
+    logs = /var/log/grafana
+    plugins = /var/lib/grafana/plugins
+    provisioning = /etc/grafana/provisioning
+
+  datasource-prometheus.yml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+
+---
+# Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: eventpulse
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.2.0
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - containerPort: 3000
+          name: web
+          protocol: TCP
+
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        - name: GF_SECURITY_ADMIN_USER
+          value: "admin"
+        - name: GF_INSTALL_PLUGINS
+          value: ""
+
+        volumeMounts:
+        - name: storage
+          mountPath: /var/lib/grafana
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: grafana-pvc
+      - name: datasources
+        configMap:
+          name: grafana-config
+          items:
+          - key: datasource-prometheus.yml
+            path: prometheus.yml
+
+---
+# Grafana Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: eventpulse
+  labels:
+    app: grafana
+  annotations:
+    description: "Grafana metrics visualization (port 3000)"
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: web
