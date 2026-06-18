@@ -1,0 +1,116 @@
+---
+# EventPulse API Gateway Ingress
+# Routes external HTTP traffic to the API Gateway service.
+#
+# Exposed Endpoints:
+#   - GET  /health     — Health check (liveness)
+#   - POST /events     — Publish transaction events to Kafka
+#   - GET  /alerts     — Retrieve all fraud alerts
+#   - GET  /alert?id=N — Retrieve specific alert by ID
+#   - GET  /metrics    — Prometheus metrics (for monitoring)
+#
+# Single Entrypoint:
+#   - URL: http://localhost/events, http://localhost/alerts (local)
+#   - URL: http://<LOAD_BALANCER_IP>/events (cloud/production)
+#
+# Path Handling:
+#   - Prefix-based routing: /events → api-gateway:8080/events
+#   - HTTP methods: GET, POST, PUT, DELETE
+#   - No path rewriting (exact paths forwarded to backend)
+#
+# TLS/HTTPS:
+#   - Disabled by default (development setup)
+#   - To enable: add tls section and create Secret with certificate
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eventpulse-ingress
+  namespace: eventpulse
+  labels:
+    app: eventpulse
+    tier: networking
+  annotations:
+    # NGINX Ingress Controller annotations
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+
+    # Enable CORS for cross-origin requests
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+
+    # Rate limiting (optional, can be tuned)
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+
+    # Proxy settings
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+
+    # Access logs
+    nginx.ingress.kubernetes.io/enable-access-log: "true"
+
+    description: "EventPulse API Gateway - Single external entrypoint"
+
+spec:
+  ingressClassName: nginx
+
+  rules:
+  # Single rule: all paths route to api-gateway service
+  - host: ""  # Empty host = all hostnames/IPs
+    http:
+      paths:
+      # Health endpoint (for monitoring/load balancers)
+      - path: /health
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+
+      # Events endpoint (POST for publishing, GET for status)
+      - path: /events
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+
+      # Alerts endpoint (GET all alerts)
+      - path: /alerts
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+
+      # Alert by ID endpoint (GET single alert)
+      - path: /alert
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+
+      # Metrics endpoint (Prometheus scraping from external)
+      - path: /metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+
+  # TLS/HTTPS Configuration (Optional, for production)
+  # Uncomment and configure with a real certificate:
+  # tls:
+  # - hosts:
+  #   - example.com
+  #   secretName: eventpulse-tls-cert

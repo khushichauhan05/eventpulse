@@ -2,7 +2,7 @@
 
 **Branch**: `kubernetes-upgrade`  
 **Base**: v1.0.0 (Docker Compose stable)  
-**Phase**: Phase 3 — Application Services Deployment
+**Phase**: Phase 4 — NGINX Ingress Deployment
 
 ---
 
@@ -334,16 +334,19 @@ From **Docker Compose** → to **Kubernetes**:
   - `postgres-deployment.yaml` — 185 lines (deployment with probes)
   - `postgres-service.yaml` — 35 lines (ClusterIP service)
 - `kafka/` directory:
-  - `kafka-pvc.yaml` — **NEW** 30 lines (50Gi PVC with annotations)
-  - `kafka-deployment.yaml` — **NEW** 230 lines (deployment with KRaft config)
-  - `kafka-service.yaml` — **NEW** 45 lines (dual-port ClusterIP service)
+  - `kafka-pvc.yaml` — 30 lines (50Gi PVC with annotations)
+  - `kafka-deployment.yaml` — 230 lines (deployment with KRaft config)
+  - `kafka-service.yaml` — 45 lines (dual-port ClusterIP service)
+- `ingress/` directory:
+  - `nginx-ingress-deployment.yaml` — **NEW** 340 lines (NGINX controller + RBAC)
+  - `eventpulse-ingress.yaml` — **NEW** 95 lines (routing to api-gateway)
 - `api-gateway/api-gateway.yaml` — 100 lines (unchanged, deployed in Phase 3)
 - `analytics-service/analytics-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `alert-service/alert-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `monitoring/prometheus.yaml` — 200+ lines (unchanged, deployed in Phase 4)
 - `README.md` — 600+ lines (comprehensive guide)
 
-**Total**: ~3,200 lines of manifests + documentation (including DEPLOYMENT_GUIDE.md extended through Phase 3)
+**Total**: ~4,700 lines of manifests + documentation (DEPLOYMENT_GUIDE.md, VALIDATION.md, INGRESS_GUIDE.md through Phase 4)
 
 ---
 
@@ -429,17 +432,45 @@ From **Docker Compose** → to **Kubernetes**:
   - Comprehensive troubleshooting section
   - Quick reference full-stack deployment commands
 
+### Phase 4 — NGINX Ingress Deployment — Completed ✅
+- [x] NGINX Ingress Controller deployment
+  - [x] `nginx-ingress-deployment.yaml` — 2 replicas, RBAC, LoadBalancer service
+  - [x] ServiceAccount, ClusterRole, ClusterRoleBinding
+  - [x] ConfigMap with NGINX settings (CORS, rate limiting, proxy settings)
+  - [x] Liveness & readiness probes for controller health
+- [x] EventPulse Ingress resource
+  - [x] `eventpulse-ingress.yaml` — Routes 5 paths to api-gateway:8080
+  - [x] Paths: /events, /alerts, /alert, /health, /metrics
+  - [x] CORS enabled (cross-origin requests)
+  - [x] Rate limiting (100 req/sec, 50 connections per IP)
+  - [x] Path-based routing (all to same backend)
+  - [x] TLS config (commented, ready for production)
+- [x] Single HTTP entrypoint
+  - [x] Port 80 for HTTP
+  - [x] Port 443 for HTTPS (optional, in production)
+  - [x] Internal DNS routing via api-gateway service
+- [x] **INGRESS_GUIDE.md** — 450+ lines comprehensive guide
+  - Installation steps for NGINX controller
+  - Deployment of EventPulse Ingress resource
+  - 6 verification procedures (health, events, alerts, CORS, rate limiting, metrics)
+  - Port-forward for local testing
+  - Cloud deployment (AWS/GKE/AKS) with external LoadBalancer IPs
+  - TLS/HTTPS configuration for production
+  - Comprehensive troubleshooting (pending IP, unreachable backend, 404s, CORS, rate limiting)
+  - Advanced configuration (custom NGINX, path rewriting, circuit breaker)
+  - Monitoring NGINX controller metrics
+  - Quick reference commands
+
 ### Next Phases — TODO
-- [ ] Phase 4: Monitoring (Prometheus, Grafana)
-- [ ] Phase 5: Ingress & networking
+- [ ] Phase 5: Monitoring (Prometheus, Grafana)
 - [ ] Phase 6: HPA, autoscaling
 - [ ] Phase 7: Production hardening
 
 ---
 
-## Status: Phase 3 Complete — All Infrastructure Ready
+## Status: Phase 4 Complete — Single HTTP Entrypoint Ready
 
-**PostgreSQL, Kafka, and all three microservices are ready for deployment.**
+**Full Kubernetes stack with external HTTP entrypoint via NGINX Ingress.**
 
 ### What's Included
 

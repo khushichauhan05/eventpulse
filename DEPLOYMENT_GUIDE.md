@@ -1112,7 +1112,294 @@ kubectl get pods -n eventpulse
 kubectl get service -n eventpulse
 ```
 
-**Next**: Phase 4 — Prometheus & Grafana deployment (monitoring)
+---
+
+## Phase 4: NGINX Ingress Deployment
+
+NGINX Ingress Controller provides a single HTTP entrypoint for all EventPulse API endpoints. Instead of accessing api-gateway directly (port 8080), clients connect to the Ingress (port 80/443).
+
+### Prerequisites
+
+- All services deployed: PostgreSQL, Kafka, Application Services (Phases 1-3)
+- Kubernetes cluster with Ingress support (most distributions include this)
+- kubectl configured
+
+### Step 1: Deploy NGINX Ingress Controller
+
+The NGINX Ingress Controller runs in the `ingress-nginx` namespace and manages all Ingress resources.
+
+```bash
+kubectl apply -f k8s/ingress/nginx-ingress-deployment.yaml
+```
+
+**What this creates**:
+- Namespace: ingress-nginx
+- ServiceAccount, ClusterRole, ClusterRoleBinding (RBAC)
+- Deployment: nginx-ingress-controller (2 replicas)
+- Service: nginx-ingress (LoadBalancer)
+- ConfigMap: nginx-config (NGINX settings)
+- IngressClass: nginx
+
+**Verify deployment**:
+```bash
+kubectl get deployment -n ingress-nginx
+kubectl rollout status deployment/nginx-ingress-controller -n ingress-nginx -w
+
+# Expected output:
+# deployment "nginx-ingress-controller" successfully rolled out
+```
+
+**Check pods**:
+```bash
+kubectl get pods -n ingress-nginx
+# Expected: 2 pods, both READY 1/1, STATUS Running
+```
+
+**Check service**:
+```bash
+kubectl get service -n ingress-nginx nginx-ingress
+# Expected: LoadBalancer service on ports 80 (HTTP) and 443 (HTTPS)
+```
+
+### Step 2: Deploy EventPulse Ingress
+
+The Ingress resource routes external traffic to the API Gateway service.
+
+```bash
+kubectl apply -f k8s/ingress/eventpulse-ingress.yaml
+```
+
+**What this creates**:
+- Ingress resource: eventpulse-ingress
+- Routes: /events, /alerts, /alert, /health, /metrics → api-gateway:8080
+- CORS enabled (cross-origin requests allowed)
+- Rate limiting (100 req/sec per IP)
+- Path-based routing (all paths go to same backend)
+
+**Verify Ingress**:
+```bash
+kubectl get ingress -n eventpulse
+# Expected output:
+# NAME                   CLASS   HOSTS   ADDRESS       PORTS   AGE
+# eventpulse-ingress     nginx   *       10.244.x.x    80      10s
+
+kubectl describe ingress eventpulse-ingress -n eventpulse
+# Should show all 5 paths pointing to api-gateway:8080
+```
+
+---
+
+## Verification: Ingress Routing
+
+### Step 1: Port-Forward for Local Testing
+
+For local/minikube environments, use port-forward to access the Ingress:
+
+```bash
+kubectl port-forward -n ingress-nginx svc/nginx-ingress 8000:80
+```
+
+**Note**: Runs in foreground. Open another terminal for tests.
+
+### Step 2: Test Health Endpoint
+
+```bash
+curl -v http://localhost:8000/health
+```
+
+**Expected output**:
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+...
+{"status":"ok","service":"api-gateway","timestamp":"..."}
+```
+
+### Step 3: Test Event Publication
+
+```bash
+curl -X POST http://localhost:8000/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "ingress_test",
+    "event_type": "purchase",
+    "amount": 75000
+  }'
+```
+
+**Expected output**:
+```json
+{"message":"Event Published"}
+```
+
+### Step 4: Test Alert Retrieval
+
+```bash
+curl http://localhost:8000/alerts | jq .
+```
+
+**Expected output**:
+```json
+[
+  {
+    "id": 1,
+    "user_id": "ingress_test",
+    "risk_score": 90,
+    "message": "HIGH RISK TRANSACTION DETECTED",
+    "created_at": "..."
+  }
+]
+```
+
+### Step 5: Test CORS
+
+```bash
+curl -i -X OPTIONS http://localhost:8000/events \
+  -H "Origin: http://example.com" \
+  -H "Access-Control-Request-Method: POST"
+```
+
+**Expected output** (200 OK with CORS headers):
+```
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+```
+
+### Step 6: Test Rate Limiting
+
+```bash
+# Send 150 rapid requests (limit is 100/sec)
+for i in {1..150}; do curl -s http://localhost:8000/health & done
+wait
+```
+
+**Result**: Some requests may get 429 (Too Many Requests) if rate limit exceeded.
+
+---
+
+## Troubleshooting: Ingress
+
+### Pod not starting
+
+```bash
+kubectl logs -n ingress-nginx deployment/nginx-ingress-controller -f
+```
+
+**Common issues**:
+- RBAC permissions (check ServiceAccount bindings)
+- Image not available (check container runtime)
+- Port conflict (port 80/443 already in use)
+
+### Ingress shows no ADDRESS
+
+```bash
+kubectl describe ingress eventpulse-ingress -n eventpulse
+```
+
+**Causes**:
+- NGINX controller not ready (check controller logs)
+- IngressClass not found (verify `kubectl get ingressclass`)
+- Service backend missing (check `kubectl get service -n eventpulse api-gateway`)
+
+### Request timeout (504 Gateway Timeout)
+
+```bash
+curl -v http://localhost:8000/events
+```
+
+**Causes**:
+- API Gateway pod not running (check `kubectl get pods -n eventpulse`)
+- Service endpoint missing (check `kubectl get endpoints -n eventpulse api-gateway`)
+- Network unreachable (check NGINX logs)
+
+### 404 Not Found
+
+```bash
+curl -v http://localhost:8000/invalid-path
+```
+
+**Solution**:
+- Verify path in Ingress matches actual API endpoint
+- Check `kubectl describe ingress eventpulse-ingress -n eventpulse` for paths
+
+### CORS Errors
+
+**Solution**: Verify CORS annotations are applied
+```bash
+kubectl get ingress eventpulse-ingress -n eventpulse -o yaml | grep cors
+```
+
+Should show enabled CORS with `*` origin
+
+---
+
+## Cloud Deployment (AWS/GCP/Azure)
+
+### Get External Load Balancer IP
+
+```bash
+kubectl get service -n ingress-nginx nginx-ingress
+```
+
+After 2-5 minutes, `EXTERNAL-IP` will show the cloud-provided IP:
+
+```
+NAME            TYPE           CLUSTER-IP       EXTERNAL-IP      PORT(S)
+nginx-ingress   LoadBalancer   10.xxx.xxx.xxx   203.0.113.50     80:30xxx/TCP
+```
+
+**Access API**:
+```bash
+curl http://203.0.113.50/events
+curl http://203.0.113.50/alerts
+```
+
+### Enable HTTPS/TLS
+
+1. Create certificate Secret:
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+kubectl create secret tls eventpulse-tls --cert=cert.pem --key=key.pem -n eventpulse
+```
+
+2. Update eventpulse-ingress.yaml to enable TLS:
+```yaml
+spec:
+  tls:
+  - hosts:
+    - api.example.com
+    secretName: eventpulse-tls
+  rules:
+  - host: api.example.com
+    http:
+      paths:
+      - path: /events
+        backend:
+          service:
+            name: api-gateway
+            port:
+              number: 8080
+```
+
+3. Reapply:
+```bash
+kubectl apply -f k8s/ingress/eventpulse-ingress.yaml
+```
+
+---
+
+## Summary
+
+✅ NGINX Ingress Controller installed and running  
+✅ EventPulse Ingress routes all paths to API Gateway  
+✅ Single entrypoint on port 80 (or 443 with TLS)  
+✅ CORS and rate limiting configured  
+✅ Ready for production traffic  
+
+See **INGRESS_GUIDE.md** for detailed troubleshooting and advanced configuration.
+
+**Next**: Phase 5 — Prometheus & Grafana (monitoring)
 
 ---
 

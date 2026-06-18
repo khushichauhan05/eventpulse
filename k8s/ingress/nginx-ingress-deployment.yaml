@@ -1,0 +1,273 @@
+---
+# NGINX Ingress Controller Deployment
+# Installs NGINX Ingress Controller in the ingress-nginx namespace.
+#
+# Purpose:
+#   - Manages external HTTP/HTTPS traffic to Kubernetes services
+#   - Provides single entrypoint for EventPulse API Gateway
+#   - Handles routing, path-based proxying, TLS termination
+#
+# Deployment Method:
+#   1. Creates ingress-nginx namespace
+#   2. Deploys NGINX controller with 2 replicas
+#   3. Exposes via LoadBalancer service (cluster-specific: localhost, cloud LB IP, etc.)
+#   4. Configures RBAC (ServiceAccount, ClusterRole, ClusterRoleBinding)
+#
+# Note: This uses the official NGINX Ingress Controller Helm manifests as a base.
+# For production, consider using Helm package manager or operator.
+
+# Namespace for NGINX Ingress Controller
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    app: ingress-nginx
+
+---
+# ServiceAccount for NGINX Ingress Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nginx-ingress
+  namespace: ingress-nginx
+  labels:
+    app: ingress-nginx
+
+---
+# ClusterRole for NGINX Ingress Controller
+# Permissions to read Ingress/Service resources and manage ConfigMaps/Secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nginx-ingress
+  labels:
+    app: ingress-nginx
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - endpoints
+  - nodes
+  - pods
+  - secrets
+  - namespaces
+  verbs:
+  - list
+  - watch
+  - get
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  - ingressclasses
+  verbs:
+  - list
+  - watch
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+# ClusterRoleBinding for NGINX Ingress Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nginx-ingress
+  labels:
+    app: ingress-nginx
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nginx-ingress
+subjects:
+- kind: ServiceAccount
+  name: nginx-ingress
+  namespace: ingress-nginx
+
+---
+# NGINX Ingress Controller Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+  namespace: ingress-nginx
+  labels:
+    app: ingress-nginx
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app: ingress-nginx
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+    spec:
+      serviceAccountName: nginx-ingress
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: nginx-ingress-controller
+        image: registry.k8s.io/ingress-nginx/controller:v1.8.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - /nginx-ingress-controller
+        - --election-id=ingress-controller-leader
+        - --controller-class=k8s.io/ingress-nginx
+        - --ingress-class=nginx
+        - --configmap=$(POD_NAMESPACE)/nginx-config
+        - --publish-service=$(POD_NAMESPACE)/nginx-ingress
+        - --watch-namespace=eventpulse
+        - --http-port=80
+        - --https-port=443
+
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: LD_PRELOAD
+          value: /usr/local/nginx/modules/ngx_http_modsecurity_module.so
+
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+        - containerPort: 443
+          name: https
+          protocol: TCP
+        - containerPort: 8443
+          name: webhook
+          protocol: TCP
+        - containerPort: 10254
+          name: metrics
+          protocol: TCP
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        securityContext:
+          allowPrivilegeEscalation: true
+          runAsNonRoot: false
+          runAsUser: 101
+          capabilities:
+            add:
+            - NET_BIND_SERVICE
+            drop:
+            - ALL
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 10254
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 10254
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+# ConfigMap for NGINX Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: ingress-nginx
+  labels:
+    app: ingress-nginx
+data:
+  # NGINX configuration options
+  upstream-fail-timeout: "10s"
+  upstream-max-fails: "3"
+  # Enable access logs to help debug routing issues
+  access-log: "/var/log/nginx/access.log"
+  error-log: "/var/log/nginx/error.log"
+  # CORS headers
+  enable-cors: "true"
+  cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+  cors-allow-origin: "*"
+
+---
+# NGINX Ingress Controller Service (LoadBalancer)
+# Exposes the NGINX controller to external traffic.
+#
+# In different environments:
+#   - Local minikube: LoadBalancer IP = localhost (or minikube IP)
+#   - Cloud (EKS, GKE, AKS): LoadBalancer IP = cloud-provided external IP
+#   - On-premises: May require MetalLB or NodePort type
+#
+# For local testing, use: kubectl port-forward -n ingress-nginx svc/nginx-ingress 80:80
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress
+  namespace: ingress-nginx
+  labels:
+    app: ingress-nginx
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+spec:
+  type: LoadBalancer
+  selector:
+    app: ingress-nginx
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 443
+    protocol: TCP
+
+---
+# IngressClass for NGINX
+# Defines the NGINX ingress class used by Ingress resources.
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+  labels:
+    app: ingress-nginx
+spec:
+  controller: k8s.io/ingress-nginx
