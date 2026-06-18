@@ -114,13 +114,35 @@ Architecture labels:
 - Alert Service
 - PostgreSQL
 
-Architecture screenshot:
+## Validation Results
 
-- [Architecture SVG](docs/screenshots/architecture.svg)
+### Architecture Diagram
 
-Validation screenshot:
+![Architecture](docs/screenshots/architecture.png)
 
-- [Validation SVG](docs/screenshots/validation.svg)
+### API Request
+
+Successfully publishing an event through the API Gateway.
+
+![API Request](docs/screenshots/api-request.png)
+
+### Analytics Processing
+
+Analytics service consuming events from Kafka and calculating risk scores.
+
+![Analytics Service](docs/screenshots/analytics-service.png)
+
+### Alert Generation
+
+Alert service consuming processed events and generating fraud alerts.
+
+![Alert Service](docs/screenshots/alert-service.png)
+
+### Alert Retrieval
+
+Alerts stored in PostgreSQL and retrieved through the REST API.
+
+![Alerts Response](docs/screenshots/alerts-response.png)
 
 ## Microservices
 
