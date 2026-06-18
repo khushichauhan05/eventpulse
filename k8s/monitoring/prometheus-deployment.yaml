@@ -168,6 +168,16 @@ spec:
       - name: prometheus
         image: prom/prometheus:v2.50.0
         imagePullPolicy: IfNotPresent
+
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 65534  # prometheus user
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Prometheus needs writable /prometheus directory
+          capabilities:
+            drop:
+            - ALL
+
         args:
         - --config.file=/etc/prometheus/prometheus.yml
         - --storage.tsdb.path=/prometheus

@@ -55,11 +55,35 @@ spec:
     spec:
       # Pod restart policy
       restartPolicy: Always
+      terminationGracePeriodSeconds: 60
+
+      # Pod anti-affinity: spread replicas across nodes if scaled
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - kafka
+              topologyKey: kubernetes.io/hostname
 
       containers:
       - name: kafka
         image: apache/kafka:latest
         imagePullPolicy: IfNotPresent
+
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Kafka needs /tmp for temp files
+          capabilities:
+            drop:
+            - ALL
 
         ports:
         - containerPort: 9092
