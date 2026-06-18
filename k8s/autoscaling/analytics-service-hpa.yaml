@@ -1,0 +1,88 @@
+---
+# Analytics Service Horizontal Pod Autoscaler
+# Automatically scales the Analytics Service based on CPU utilization.
+#
+# Role:
+#   - Consumes events from Kafka (events.raw topic)
+#   - Computes risk scores for each event
+#   - Publishes to Kafka (events.processed topic)
+#
+# Scaling Behavior:
+#   - High event throughput → more pods to process in parallel
+#   - Each pod joins the Kafka consumer group (distributed processing)
+#   - More pods = faster event consumption and risk scoring
+#
+# Scaling Policy:
+#   - Minimum replicas: 2
+#   - Maximum replicas: 10
+#   - Target CPU utilization: 70%
+#   - Scale-up: 1 pod per 30 seconds (fast response to load spikes)
+#   - Scale-down: 1 pod per 60 seconds (conservative, avoid thrashing)
+#
+# Kafka Consumer Group Impact:
+#   - 2 pods: partitions distributed across 2 consumers
+#   - 10 pods: partitions distributed across 10 consumers
+#   - Note: If topics have fewer partitions, some pods will be idle
+#   - Recommendation: Create topics with at least 10 partitions for full scalability
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-service-hpa
+  namespace: eventpulse
+  labels:
+    app: analytics-service
+    tier: autoscaling
+  annotations:
+    description: "Analytics Service autoscaling - scales 2-10 pods based on CPU utilization"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-service
+
+  minReplicas: 2
+  maxReplicas: 10
+
+  metrics:
+  # Scale based on CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      # Target 70% of requested CPU (100m * 0.70 = 70m per pod)
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+  # Optional: also scale based on memory
+  - type: Resource
+    resource:
+      name: memory
+      # Target 80% of requested memory (128Mi * 0.80 = 102.4Mi per pod)
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+  # Behavior: scaling dynamics
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      # Add 1 pod every 30 seconds (responsive to traffic spikes)
+      - type: Pods
+        value: 1
+        periodSeconds: 30
+      # Or: double the pods (whichever is more aggressive)
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      selectPolicy: Max
+
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      # Remove 1 pod every 60 seconds (conservative, preserve message processing)
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min

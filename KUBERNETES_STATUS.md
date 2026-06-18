@@ -2,7 +2,7 @@
 
 **Branch**: `kubernetes-upgrade`  
 **Base**: v1.0.0 (Docker Compose stable)  
-**Phase**: Phase 4 — NGINX Ingress Deployment
+**Phase**: Phase 5 — Horizontal Pod Autoscaling
 
 ---
 
@@ -338,15 +338,19 @@ From **Docker Compose** → to **Kubernetes**:
   - `kafka-deployment.yaml` — 230 lines (deployment with KRaft config)
   - `kafka-service.yaml` — 45 lines (dual-port ClusterIP service)
 - `ingress/` directory:
-  - `nginx-ingress-deployment.yaml` — **NEW** 340 lines (NGINX controller + RBAC)
-  - `eventpulse-ingress.yaml` — **NEW** 95 lines (routing to api-gateway)
+  - `nginx-ingress-deployment.yaml` — 340 lines (NGINX controller + RBAC)
+  - `eventpulse-ingress.yaml` — 95 lines (routing to api-gateway)
+- `autoscaling/` directory:
+  - `api-gateway-hpa.yaml` — **NEW** 70 lines (HPA 2-10 replicas, CPU-based)
+  - `analytics-service-hpa.yaml` — **NEW** 65 lines (HPA for Kafka consumer)
+  - `alert-service-hpa.yaml` — **NEW** 65 lines (HPA for alert generation)
 - `api-gateway/api-gateway.yaml` — 100 lines (unchanged, deployed in Phase 3)
 - `analytics-service/analytics-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `alert-service/alert-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `monitoring/prometheus.yaml` — 200+ lines (unchanged, deployed in Phase 4)
 - `README.md` — 600+ lines (comprehensive guide)
 
-**Total**: ~4,700 lines of manifests + documentation (DEPLOYMENT_GUIDE.md, VALIDATION.md, INGRESS_GUIDE.md through Phase 4)
+**Total**: ~5,300 lines of manifests + documentation (DEPLOYMENT_GUIDE.md, VALIDATION.md, INGRESS_GUIDE.md, AUTOSCALING_GUIDE.md through Phase 5)
 
 ---
 
@@ -461,16 +465,50 @@ From **Docker Compose** → to **Kubernetes**:
   - Monitoring NGINX controller metrics
   - Quick reference commands
 
+### Phase 5 — Horizontal Pod Autoscaling (HPA) — Completed ✅
+- [x] HPA for API Gateway
+  - [x] `api-gateway-hpa.yaml` — Scales 2-10 replicas
+  - [x] Target: 70% CPU utilization (70m of 100m request)
+  - [x] Scale-up: 1 pod per 30 seconds (responsive)
+  - [x] Scale-down: 1 pod per 60 seconds after 5-min stabilization (conservative)
+- [x] HPA for Analytics Service
+  - [x] `analytics-service-hpa.yaml` — Kafka consumer group scaling
+  - [x] Scales based on event processing CPU load
+  - [x] Distributed processing across replicas
+- [x] HPA for Alert Service
+  - [x] `alert-service-hpa.yaml` — Scales with alert generation and DB writes
+  - [x] Kafka consumer + PostgreSQL write scaling
+- [x] Load Testing & Verification
+  - [x] Apache Bench (ab) load generation procedures
+  - [x] Event-based load testing (1000+ events)
+  - [x] Upscaling verification (2 → 3, 4, 5... replicas)
+  - [x] Downscaling verification (many → 2 replicas after load drops)
+  - [x] Scaling event monitoring and troubleshooting
+- [x] **AUTOSCALING_GUIDE.md** — 450+ lines comprehensive guide
+  - HPA explanation and benefits
+  - Prerequisites (Metrics Server, CPU requests, multiple replicas)
+  - Installation of all 3 HPAs
+  - Real-time HPA monitoring (`kubectl get hpa -w`)
+  - 3 load testing scenarios:
+    - Apache Bench (100 concurrent, 10,000 requests)
+    - Event sending (1000 events rapidly)
+    - Kafka consumer scaling
+  - Scaling verification procedures (upscaling, downscaling)
+  - Advanced monitoring (metrics history, events, conditions)
+  - Scaling configuration tuning (aggressive vs conservative)
+  - Comprehensive troubleshooting (unknown metrics, no scaling, excessive scaling)
+  - Cost optimization recommendations
+  - Production checklist
+
 ### Next Phases — TODO
-- [ ] Phase 5: Monitoring (Prometheus, Grafana)
-- [ ] Phase 6: HPA, autoscaling
+- [ ] Phase 6: Monitoring (Prometheus, Grafana)
 - [ ] Phase 7: Production hardening
 
 ---
 
-## Status: Phase 4 Complete — Single HTTP Entrypoint Ready
+## Status: Phase 5 Complete — Auto-Scaling Ready
 
-**Full Kubernetes stack with external HTTP entrypoint via NGINX Ingress.**
+**Full Kubernetes stack with automatic horizontal scaling (2-10 replicas per service).**
 
 ### What's Included
 

@@ -1,0 +1,88 @@
+---
+# Alert Service Horizontal Pod Autoscaler
+# Automatically scales the Alert Service based on CPU utilization.
+#
+# Role:
+#   - Consumes risk-scored events from Kafka (events.processed topic)
+#   - Generates fraud alerts for high-risk transactions (risk_score >= 80)
+#   - Stores alerts in PostgreSQL
+#   - Publishes alerts to Kafka (alerts topic)
+#
+# Scaling Characteristics:
+#   - Scales to match Kafka consumption rate
+#   - Database writes scale with pod count (connection pooling per pod)
+#   - Each pod processes events independently
+#
+# Scaling Policy:
+#   - Minimum replicas: 2
+#   - Maximum replicas: 10
+#   - Target CPU utilization: 70%
+#   - Scale-up: Responsive to load spikes (1 pod per 30 seconds)
+#   - Scale-down: Conservative to avoid connection churn (1 pod per 60 seconds)
+#
+# Database Considerations:
+#   - Max connections = pod_count * connection_pool_size
+#   - For 10 pods: might need to tune PostgreSQL max_connections
+#   - Monitor PostgreSQL connection count: SELECT count(*) FROM pg_stat_activity;
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: alert-service-hpa
+  namespace: eventpulse
+  labels:
+    app: alert-service
+    tier: autoscaling
+  annotations:
+    description: "Alert Service autoscaling - scales 2-10 pods based on CPU utilization"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: alert-service
+
+  minReplicas: 2
+  maxReplicas: 10
+
+  metrics:
+  # Scale based on CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      # Target 70% of requested CPU (100m * 0.70 = 70m per pod)
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+  # Optional: also scale based on memory
+  - type: Resource
+    resource:
+      name: memory
+      # Target 80% of requested memory (128Mi * 0.80 = 102.4Mi per pod)
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+  # Behavior: scaling dynamics
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      # Add 1 pod every 30 seconds (quick response to event surge)
+      - type: Pods
+        value: 1
+        periodSeconds: 30
+      # Or: double the pods
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      selectPolicy: Max
+
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      # Remove 1 pod every 60 seconds (gradual, stable database connections)
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min

@@ -1,0 +1,86 @@
+---
+# API Gateway Horizontal Pod Autoscaler
+# Automatically scales the API Gateway deployment based on CPU utilization.
+#
+# Scaling Policy:
+#   - Minimum replicas: 2 (always maintain 2 pods)
+#   - Maximum replicas: 10 (cap at 10 pods)
+#   - Target CPU utilization: 70% (scale up when avg CPU > 70%)
+#   - Scale-up behavior: Add 1 pod per 30 seconds (gradual increase)
+#   - Scale-down behavior: Remove 1 pod per 60 seconds (conservative decrease)
+#
+# Metrics:
+#   - Uses CPU requests as baseline (100m defined in deployment)
+#   - If avg pod CPU > 70m (70% of 100m), scale up
+#   - Monitors across all replicas, uses average
+#
+# Example Scaling:
+#   - 2 pods at 80% CPU → 3 pods (redistribute load)
+#   - 8 pods at 30% CPU → 7 pods (consolidate, save resources)
+#
+# Requirements:
+#   - Kubernetes Metrics Server must be running (collects pod metrics)
+#   - Pods must have CPU requests defined (used as reference)
+#   - Deployment must have multiple replicas (HPA scales from 2-10)
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: eventpulse
+  labels:
+    app: api-gateway
+    tier: autoscaling
+  annotations:
+    description: "API Gateway autoscaling - scales 2-10 pods based on CPU utilization"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+
+  minReplicas: 2
+  maxReplicas: 10
+
+  metrics:
+  # Scale based on CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      # Target 70% of requested CPU (100m * 0.70 = 70m per pod)
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+  # Optional: also scale based on memory (secondary metric)
+  - type: Resource
+    resource:
+      name: memory
+      # Target 80% of requested memory (128Mi * 0.80 = 102.4Mi per pod)
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+  # Behavior: how quickly to scale up/down
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      # Scale up: add 1 pod per 30 seconds
+      - type: Pods
+        value: 1
+        periodSeconds: 30
+      # Or: scale up by 100% (double) per 30 seconds (choose faster)
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      selectPolicy: Max  # Use whichever results in more pods
+
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      # Scale down: remove 1 pod per 60 seconds
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min  # Use whichever results in fewer pods (conservative)
