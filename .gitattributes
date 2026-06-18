@@ -1,0 +1,22 @@
+# Force Unix line endings (LF) for all Go files
+# This ensures consistency across Windows and Linux environments
+*.go text eol=lf
+*_test.go text eol=lf
+
+# YAML files
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Docker
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Git
+.gitignore text eol=lf
+.gitattributes text eol=lf
