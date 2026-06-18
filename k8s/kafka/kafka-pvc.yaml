@@ -1,0 +1,38 @@
+---
+# Kafka Persistent Volume Claim
+# Allocates 50Gi of persistent storage for Kafka broker data.
+# Storage class uses the cluster default. For production, specify a named StorageClass.
+#
+# This PVC is:
+# - Namespace-scoped to eventpulse
+# - ReadWriteOnce (accessible by one pod at a time)
+# - Retained after pod deletion (data survives restarts)
+# - Mounted at /var/lib/kafka/data in the pod
+#
+# 50Gi is suitable for:
+# - Development and staging environments
+# - Moderate event throughput (1000+ events/sec)
+# - 7-14 day retention with default topic replication
+#
+# For production, adjust based on:
+# - Event throughput (events/sec)
+# - Number of topics and partitions
+# - Retention policy (time-based or size-based)
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-pvc
+  namespace: eventpulse
+  labels:
+    app: kafka
+    component: message-broker
+  annotations:
+    description: "Kafka broker data storage (50Gi, ReadWriteOnce)"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  # storageClassName: fast-ssd  # Uncomment and set for production (SSD preferred)

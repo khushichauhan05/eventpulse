@@ -1,0 +1,53 @@
+---
+# Kafka Service
+# Exposes the Kafka broker on ports 9092 (client) and 9093 (controller) within the cluster.
+#
+# Service DNS: kafka.eventpulse.svc.cluster.local
+# All services connect using this DNS name (not IP addresses).
+#
+# Type: ClusterIP (internal-only, no external access)
+# - Producers (API Gateway) connect to kafka:9092
+# - Consumers (Analytics Service, Alert Service) connect to kafka:9092
+# - Broker-to-broker communication on kafka:9093 (not used in single-node)
+#
+# Port mapping:
+#   - Service port 9092 → Pod port 9092 (client connections)
+#   - Service port 9093 → Pod port 9093 (controller communication)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: eventpulse
+  labels:
+    app: kafka
+    tier: message-broker
+  annotations:
+    description: "Kafka broker service (ClusterIP, internal-only)"
+spec:
+  # Service type: ClusterIP = internal-only
+  type: ClusterIP
+
+  # Pod selector: route traffic to pods with app=kafka label
+  selector:
+    app: kafka
+
+  # Ports: dual-port service for client and controller communication
+  ports:
+  - port: 9092
+    targetPort: 9092
+    protocol: TCP
+    name: broker
+    # Service IP access: kafka.eventpulse.svc.cluster.local:9092
+
+  - port: 9093
+    targetPort: 9093
+    protocol: TCP
+    name: controller
+    # Service IP access: kafka.eventpulse.svc.cluster.local:9093 (for multi-node clusters)
+
+  # Session affinity (optional, for stickiness)
+  # sessionAffinity: ClientIP
+  # sessionAffinityConfig:
+  #   clientIP:
+  #     timeoutSeconds: 10800

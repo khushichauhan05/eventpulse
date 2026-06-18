@@ -1,0 +1,177 @@
+---
+# Kafka Broker Deployment (KRaft Mode)
+# Runs a single-node Apache Kafka broker without ZooKeeper.
+#
+# KRaft Mode:
+# - Kafka 3.3+ can run without ZooKeeper
+# - Single node acts as both broker and controller
+# - KAFKA_NODE_ID=1 identifies this broker
+# - KAFKA_PROCESS_ROLES=broker,controller enables both roles
+#
+# Persistence:
+# - Data stored in PVC "kafka-pvc" (50Gi, ReadWriteOnce)
+# - PVC persists after pod deletion
+# - Pod restarts use the same PVC → data survives
+#
+# Networking:
+# - PLAINTEXT port 9092: Client connections (producer/consumer)
+# - CONTROLLER port 9093: Broker-to-broker communication
+# - Advertised: kafka.eventpulse.svc.cluster.local:9092
+#
+# Auto Topic Creation:
+# - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true (for development)
+# - Topics created on first message (events.raw, events.processed, alerts)
+# - For production, disable and create topics manually
+#
+# Health Checks:
+# - Liveness probe: kafka-broker-api-versions.sh (checks broker responsiveness)
+# - Readiness probe: kafka-topics.sh --list (checks full readiness)
+# - Initial delays staggered to allow startup time
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  namespace: eventpulse
+  labels:
+    app: kafka
+    tier: message-broker
+  annotations:
+    description: "Apache Kafka broker (KRaft mode, single node)"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Required for RWO PVC (no concurrent pods)
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+        tier: message-broker
+      annotations:
+        prometheus.io/scrape: "false"  # Kafka doesn't expose Prometheus metrics by default
+    spec:
+      # Pod restart policy
+      restartPolicy: Always
+
+      containers:
+      - name: kafka
+        image: apache/kafka:latest
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - containerPort: 9092
+          name: broker
+          protocol: TCP
+        - containerPort: 9093
+          name: controller
+          protocol: TCP
+
+        # Environment variables for KRaft mode
+        env:
+        # Node identification
+        - name: KAFKA_NODE_ID
+          value: "1"
+
+        # Roles: broker (handles client connections) + controller (coordinates cluster)
+        - name: KAFKA_PROCESS_ROLES
+          value: "broker,controller"
+
+        # Listeners: where Kafka listens for connections
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+
+        # Advertised listeners: what clients connect to
+        # Using Kubernetes service DNS name for cluster-internal routing
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://kafka.eventpulse.svc.cluster.local:9092"
+
+        # Controller listener names (for broker-to-broker communication)
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+
+        # Quorum voters: identifies the controller quorum
+        # Format: id@host:port (must include this node)
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: "1@kafka.eventpulse.svc.cluster.local:9093"
+
+        # Replication factor for internal topics (offsets, configs, etc.)
+        # Set to 1 for single-node; production should be 3+
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+
+        # Auto-create topics on first message (development only)
+        # Disable in production and create topics manually
+        - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+          value: "true"
+
+        # Optional: Performance tuning
+        - name: KAFKA_LOG_SEGMENT_BYTES
+          value: "1073741824"  # 1GB per log segment
+
+        - name: KAFKA_LOG_RETENTION_HOURS
+          value: "168"  # 7 days retention
+
+        - name: KAFKA_COMPRESSION_TYPE
+          value: "snappy"  # Compress logs with snappy
+
+        # Volume mounts
+        volumeMounts:
+        # Data directory: persisted via PVC
+        - name: kafka-data
+          mountPath: /var/lib/kafka/data
+
+        # Resource requests and limits
+        resources:
+          requests:
+            cpu: 500m              # Minimum CPU (0.5 cores)
+            memory: 512Mi          # Minimum memory
+          limits:
+            cpu: 2000m             # Maximum CPU (2 cores)
+            memory: 2Gi            # Maximum memory
+
+        # Liveness probe: restart pod if broker becomes unresponsive
+        # Checks broker API version support
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 | grep ApiVersion
+          # Wait 30s after pod start before first check (allow initialization)
+          initialDelaySeconds: 30
+          # Check every 10s
+          periodSeconds: 10
+          # Allow 5 seconds for response
+          timeoutSeconds: 5
+          # Restart after 3 consecutive failures (30s)
+          failureThreshold: 3
+          # Success is 1 consecutive pass
+          successThreshold: 1
+
+        # Readiness probe: remove from service if broker is unavailable
+        # Checks if broker can list topics (more comprehensive check)
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | head -1
+          # Wait 20s after pod start before first check
+          initialDelaySeconds: 20
+          # Check every 5s
+          periodSeconds: 5
+          # Allow 5 seconds for response (topics may take time to list)
+          timeoutSeconds: 5
+          # Mark not-ready after 3 consecutive failures
+          failureThreshold: 3
+          # Success is 1 consecutive pass
+          successThreshold: 1
+
+      # Volumes: PVC for data
+      volumes:
+      - name: kafka-data
+        persistentVolumeClaim:
+          claimName: kafka-pvc

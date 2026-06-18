@@ -2,7 +2,7 @@
 
 This guide walks through deploying EventPulse to Kubernetes step by step, starting with PostgreSQL.
 
-**Status**: Phase 1 — PostgreSQL Deployment  
+**Status**: Phase 2 — Kafka Deployment  
 **Branch**: kubernetes-upgrade  
 **Target**: Production-ready Kubernetes setup
 
@@ -426,8 +426,10 @@ When all verifications pass, PostgreSQL is ready for the next phase: deploying t
 
 ## Quick Reference: All Commands
 
+### Phase 1: PostgreSQL
+
 ```bash
-# Deploy PostgreSQL (step by step)
+# Deploy PostgreSQL
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/configmap.yaml
 kubectl create secret generic eventpulse-secrets \
@@ -440,22 +442,410 @@ kubectl apply -f k8s/postgres/postgres-init-cm.yaml
 kubectl apply -f k8s/postgres/postgres-deployment.yaml
 kubectl apply -f k8s/postgres/postgres-service.yaml
 
-# Verify
+# Verify PostgreSQL
 kubectl rollout status deployment/postgres -n eventpulse -w
-kubectl get pods -n eventpulse
+kubectl get pods -n eventpulse -l app=postgres
 kubectl logs -n eventpulse -l app=postgres -f
-
-# Test connectivity
 kubectl run -it --rm psql-client --image=postgres:16 --restart=Never -n eventpulse -- \
-  psql -h postgres.eventpulse.svc.cluster.local -U admin -d eventpulse -c "SELECT version();"
+  psql -h postgres.eventpulse.svc.cluster.local -U admin -d eventpulse -c "SELECT COUNT(*) FROM alerts;"
 
 # Port forward for local testing
 kubectl port-forward -n eventpulse svc/postgres 5432:5432
 ```
 
+### Phase 2: Kafka
+
+```bash
+# Deploy Kafka
+kubectl apply -f k8s/kafka/kafka-pvc.yaml
+kubectl apply -f k8s/kafka/kafka-deployment.yaml
+kubectl apply -f k8s/kafka/kafka-service.yaml
+
+# Verify Kafka is running
+kubectl rollout status deployment/kafka -n eventpulse -w
+kubectl get pods -n eventpulse -l app=kafka
+kubectl logs -n eventpulse -l app=kafka -f
+
+# Create topics
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create --topic events.raw --partitions 1 --replication-factor 1
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create --topic events.processed --partitions 1 --replication-factor 1
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create --topic alerts --partitions 1 --replication-factor 1
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create --topic events.dlq --partitions 1 --replication-factor 1
+
+# Verify topics
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 --list
+
+# Check broker health
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-broker-api-versions.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092
+
+# Port forward for local testing
+kubectl port-forward -n eventpulse svc/kafka 9092:9092
+```
+
+---
+
+## Phase 2: Kafka Deployment
+
+Kafka is the message broker that orchestrates communication between services. This phase deploys Kafka in KRaft mode (no ZooKeeper) with persistent storage and health checks.
+
+### Prerequisites
+
+- PostgreSQL deployed and running (Phase 1 completed)
+- EventPulse namespace and ConfigMap already exist
+- Persistent volume provisioner (StorageClass)
+
+### Step 1: Create Kafka Persistent Volume Claim
+
+The PVC allocates 50Gi of storage for Kafka broker data.
+
+```bash
+kubectl apply -f k8s/kafka/kafka-pvc.yaml
+```
+
+**Verify**:
+```bash
+kubectl get pvc -n eventpulse kafka-pvc
+# Expected output:
+# NAME         STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+# kafka-pvc    Bound    pvc-xxxxx                                  50Gi       RWO            standard       10s
+
+kubectl describe pvc kafka-pvc -n eventpulse
+```
+
+### Step 2: Deploy Kafka Broker
+
+Deploy the Kafka broker in KRaft mode (single node, no ZooKeeper).
+
+```bash
+kubectl apply -f k8s/kafka/kafka-deployment.yaml
+```
+
+**Verify deployment created**:
+```bash
+kubectl get deployment -n eventpulse kafka
+# Expected output:
+# NAME    READY   UP-TO-DATE   AVAILABLE   AGE
+# kafka   0/1     1            0           5s
+
+# Watch rollout progress:
+kubectl rollout status deployment/kafka -n eventpulse -w
+# Wait for: "deployment "kafka" successfully rolled out"
+```
+
+**Check pod status**:
+```bash
+kubectl get pods -n eventpulse -l app=kafka
+# Wait for STATUS = Running and READY = 1/1
+# This may take 20-30 seconds while Kafka initializes
+
+# Detailed pod info:
+kubectl describe pod -n eventpulse -l app=kafka
+```
+
+### Step 3: Create Kafka Service
+
+The Service provides a stable DNS name and load balances traffic to the broker.
+
+```bash
+kubectl apply -f k8s/kafka/kafka-service.yaml
+```
+
+**Verify service created**:
+```bash
+kubectl get service -n eventpulse kafka
+# Expected output:
+# NAME    TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)             AGE
+# kafka   ClusterIP   10.xxx.xxx.xxx   <none>        9092/TCP,9093/TCP   5s
+
+kubectl get service kafka -n eventpulse -o wide
+```
+
+---
+
+## Verification: Kafka is Running
+
+After all manifests are applied, run these verification steps:
+
+### 1. Check Pod Status
+
+```bash
+kubectl get pods -n eventpulse -l app=kafka
+```
+
+**Expected output**:
+```
+NAME                     READY   STATUS    RESTARTS   AGE
+kafka-xxxxx              1/1     Running   0          2m
+```
+
+If STATUS is not "Running":
+```bash
+kubectl describe pod -n eventpulse -l app=kafka
+# Look for "Events:" section for error details
+```
+
+### 2. Check Pod Logs
+
+```bash
+kubectl logs -n eventpulse -l app=kafka
+```
+
+**Expected output** (key lines):
+```
+...
+[BrokerServer id=1] started
+[KafkaServer id=1] started
+[SocketServer brokerId=1] Started 2 acceptors on port 9092
+[SocketServer brokerId=1] Started 1 acceptor on port 9093
+```
+
+**Stream logs** (follow in real-time):
+```bash
+kubectl logs -n eventpulse -l app=kafka -f
+# Press Ctrl+C to stop
+```
+
+### 3. Check Health Probe Status
+
+```bash
+kubectl describe pod -n eventpulse -l app=kafka | grep -A 10 "Probes:"
+```
+
+**Expected output**:
+```
+Liveness:       exec [/bin/bash -c /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 | grep ApiVersion] delay=30s timeout=5s period=10s #success=1 #failure=3
+Readiness:      exec [/bin/bash -c /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | head -1] delay=20s timeout=5s period=5s #success=1 #failure=3
+```
+
+### 4. Create Kafka Topics
+
+Topics must exist before producers/consumers can use them. Auto-creation is enabled for development, but explicit creation is recommended.
+
+**Create topics from within cluster**:
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create \
+  --topic events.raw \
+  --partitions 1 \
+  --replication-factor 1
+```
+
+**Expected output**:
+```
+Created topic events.raw.
+```
+
+Repeat for other topics:
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create \
+  --topic events.processed \
+  --partitions 1 \
+  --replication-factor 1
+```
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create \
+  --topic alerts \
+  --partitions 1 \
+  --replication-factor 1
+```
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --create \
+  --topic events.dlq \
+  --partitions 1 \
+  --replication-factor 1
+```
+
+### 5. Verify Topics
+
+**List all topics**:
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --list
+```
+
+**Expected output**:
+```
+__consumer_offsets
+alerts
+events.dlq
+events.processed
+events.raw
+```
+
+**Describe a topic**:
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --describe \
+  --topic events.raw
+```
+
+**Expected output**:
+```
+Topic: events.raw	TopicId: xxxxxxxxxxxxxxxxxxxxx	PartitionCount: 1	ReplicationFactor: 1	Configs:
+	Topic: events.raw	Partition: 0	Leader: 1	Replicas: 1	Isr: 1
+```
+
+### 6. Test Broker Health
+
+**Check broker API versions**:
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-broker-api-versions.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092
+```
+
+**Expected output**:
+```
+ApiVersion: 0 Min: 0 Max: 4
+ApiVersion: 1 Min: 0 Max: 11
+ApiVersion: 2 Min: 0 Max: 4
+...
+```
+
+### 7. Verify Pod Restart Survival
+
+**Delete the pod** (Kubernetes will recreate it):
+
+```bash
+kubectl delete pod -n eventpulse -l app=kafka
+```
+
+**Watch it restart**:
+```bash
+kubectl get pods -n eventpulse -l app=kafka -w
+# You'll see pod recreate and reach Running state
+```
+
+**List topics again** (data should still exist):
+
+```bash
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --list
+```
+
+This proves the PVC persisted Kafka broker logs across pod deletion/recreation.
+
+---
+
+## Troubleshooting: Kafka
+
+### Pod stuck in CrashLoopBackOff
+
+```bash
+kubectl describe pod -n eventpulse -l app=kafka
+# Look for "Error" or "LastState" details
+
+kubectl logs -n eventpulse -l app=kafka --previous
+# View logs from the crashed container
+```
+
+**Common causes**:
+- PVC not bound (check `kubectl get pvc`)
+- Insufficient disk space (check PVC capacity)
+- Insufficient memory (check node capacity)
+- Port conflict (rare in Kubernetes)
+
+### Topics not creating
+
+```bash
+# Try to list topics (will show failure reason)
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+  --list
+```
+
+**Common causes**:
+- Broker not ready (wait for readiness probe)
+- Network connectivity issue (test from another pod)
+- Broker configuration error (check logs)
+
+### Services can't reach Kafka
+
+```bash
+# Test from another pod
+kubectl run -it --rm debug --image=busybox --restart=Never -n eventpulse -- \
+  sh -c "echo 'Test' | nc -w 2 kafka.eventpulse.svc.cluster.local 9092"
+
+# Or try DNS lookup
+kubectl run -it --rm debug --image=busybox --restart=Never -n eventpulse -- \
+  nslookup kafka.eventpulse.svc.cluster.local
+```
+
+### Broker not responding
+
+```bash
+# Check broker process
+kubectl exec -it -n eventpulse -c kafka pod/$(kubectl get pod -n eventpulse -l app=kafka -o jsonpath='{.items[0].metadata.name}') -- \
+  ps aux | grep java
+
+# Check Kafka logs for errors
+kubectl logs -n eventpulse -l app=kafka -f
+```
+
+### PVC not binding
+
+```bash
+kubectl get pvc -n eventpulse kafka-pvc
+kubectl get pv | grep kafka-pvc
+
+# Check StorageClass
+kubectl get storageclass
+```
+
+---
+
+## Kafka is Ready
+
+When all verifications pass, Kafka is ready for the next phase: deploying the application services.
+
+**Next**: Phase 3 — Application Services (API Gateway, Analytics Service, Alert Service)
+
 ---
 
 ## Production Considerations
+
+### PostgreSQL
 
 - **StorageClass**: Specify a high-performance StorageClass for production (SSD, replicated)
 - **PVC Size**: Adjust 20Gi based on expected alert volume
@@ -464,3 +854,32 @@ kubectl port-forward -n eventpulse svc/postgres 5432:5432
 - **Secrets**: Use Sealed Secrets, Vault, or cloud-native secret management
 - **Resource Limits**: Tune CPU/memory requests based on query patterns
 - **Monitoring**: Add Prometheus exporter for PostgreSQL metrics
+
+### Kafka
+
+- **StorageClass**: Specify high-performance SSD StorageClass (Kafka is I/O intensive)
+- **PVC Size**: Adjust 50Gi based on:
+  - Event throughput (events/sec)
+  - Number of topics and partitions
+  - Retention policy (time-based or size-based)
+- **Replicas**: Deploy 3+ Kafka brokers in a StatefulSet (not a Deployment)
+  - Each broker needs a separate PVC
+  - Use Kafka broker scale-out (multiple replicas)
+  - Set `KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=3`
+  - Set `KAFKA_DEFAULT_REPLICATION_FACTOR=3`
+- **Auto Topic Creation**: Disable in production (`KAFKA_AUTO_CREATE_TOPICS_ENABLE=false`)
+  - Create topics manually with proper partition count
+  - Set retention policies explicitly
+- **Monitoring**: Add JMX exporter for Kafka metrics (CPU, network, disk, lag)
+- **Backups**: Implement disaster recovery:
+  - Regular PVC snapshots
+  - Cross-region replication
+  - Partition offset backup
+- **Security**:
+  - Enable SASL authentication
+  - Use TLS for encryption
+  - Implement network policies
+- **Optimization**:
+  - Tune broker settings: `num.network.threads`, `num.io.threads`
+  - Adjust segment size and retention based on workload
+  - Use compression (snappy or lz4) for log segments

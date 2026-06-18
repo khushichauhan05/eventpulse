@@ -2,7 +2,7 @@
 
 **Branch**: `kubernetes-upgrade`  
 **Base**: v1.0.0 (Docker Compose stable)  
-**Phase**: Phase 1 — PostgreSQL Deployment
+**Phase**: Phase 2 — Kafka Deployment
 
 ---
 
@@ -50,10 +50,19 @@
   - Resource requests: 250m CPU, 256Mi memory; Limits: 1000m CPU, 1Gi memory
   - Strategy: Recreate (required for RWO PVC)
 
-- [x] **Kafka**
-  - Single-node Deployment (Apache Kafka, KRaft mode)
-  - PersistentVolumeClaim (50Gi)
-  - Service (ClusterIP, internal DNS)
+- [x] **Kafka** (Modularized & Production-Ready)
+  - `k8s/kafka/kafka-pvc.yaml` — 50Gi PersistentVolumeClaim with annotations
+  - `k8s/kafka/kafka-deployment.yaml` — Single-node Deployment (Apache Kafka, KRaft mode)
+    - KRaft configuration: KAFKA_NODE_ID=1, KAFKA_PROCESS_ROLES=broker,controller
+    - Dual listeners: PLAINTEXT:9092 (client), CONTROLLER:9093 (broker)
+    - Advertised: kafka.eventpulse.svc.cluster.local:9092
+    - Auto topic creation enabled (disable in production)
+    - Mounts PVC at `/var/lib/kafka/data` (data survives pod restarts)
+  - `k8s/kafka/kafka-service.yaml` — ClusterIP Service (dual ports 9092, 9093)
+  - Liveness probe: kafka-broker-api-versions.sh every 10s (restart after 3 failures)
+  - Readiness probe: kafka-topics.sh --list every 5s (deregister after 3 failures)
+  - Resource requests: 500m CPU, 512Mi memory; Limits: 2000m CPU, 2Gi memory
+  - Strategy: Recreate (required for RWO PVC)
   - Auto topic creation enabled
   - Liveness probe (broker API check)
   - Readiness probe (topic list)
@@ -320,18 +329,21 @@ From **Docker Compose** → to **Kubernetes**:
 - `configmap.yaml` — 32 lines
 - `secrets.yaml` — 30 lines (template with documentation)
 - `postgres/` directory:
-  - `postgres-pvc.yaml` — **NEW** 25 lines (PVC with annotations)
-  - `postgres-init-cm.yaml` — **NEW** 45 lines (init SQL schema)
-  - `postgres-deployment.yaml` — **NEW** 185 lines (deployment with probes)
-  - `postgres-service.yaml` — **NEW** 35 lines (ClusterIP service)
-- `kafka/kafka.yaml` — 110 lines (unchanged, but split coming in Phase 2)
+  - `postgres-pvc.yaml` — 25 lines (PVC with annotations)
+  - `postgres-init-cm.yaml` — 45 lines (init SQL schema)
+  - `postgres-deployment.yaml` — 185 lines (deployment with probes)
+  - `postgres-service.yaml` — 35 lines (ClusterIP service)
+- `kafka/` directory:
+  - `kafka-pvc.yaml` — **NEW** 30 lines (50Gi PVC with annotations)
+  - `kafka-deployment.yaml` — **NEW** 230 lines (deployment with KRaft config)
+  - `kafka-service.yaml` — **NEW** 45 lines (dual-port ClusterIP service)
 - `api-gateway/api-gateway.yaml` — 100 lines (unchanged, deployed in Phase 3)
 - `analytics-service/analytics-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `alert-service/alert-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
 - `monitoring/prometheus.yaml` — 200+ lines (unchanged, deployed in Phase 4)
 - `README.md` — 600+ lines (comprehensive guide)
 
-**Total**: ~2,000 lines of manifests + documentation (including DEPLOYMENT_GUIDE.md)
+**Total**: ~2,600 lines of manifests + documentation (including DEPLOYMENT_GUIDE.md extended with Phase 2)
 
 ---
 
@@ -366,8 +378,26 @@ From **Docker Compose** → to **Kubernetes**:
   - Quick reference command list
 - [x] Docker Compose remains untouched
 
+### Phase 2 — Kafka Deployment — Completed ✅
+- [x] Kafka modularized into separate files
+  - [x] `kafka-pvc.yaml` — PVC with annotations
+  - [x] `kafka-deployment.yaml` — Deployment with KRaft config, health checks
+  - [x] `kafka-service.yaml` — Dual-port ClusterIP service
+- [x] KRaft mode: Single node broker + controller
+- [x] PVC: 50Gi persistent storage, ReadWriteOnce, survives pod restarts
+- [x] Health checks: Liveness (broker API), readiness (topic list)
+- [x] Resource limits: 500m-2000m CPU, 512Mi-2Gi memory
+- [x] Pod restart survival: Data persists via PVC
+- [x] **DEPLOYMENT_GUIDE.md** extended with Phase 2 (250+ new lines)
+  - Step-by-step kubectl apply commands for Kafka
+  - Topic creation (4 topics: events.raw, events.processed, alerts, events.dlq)
+  - Topic verification procedures
+  - Broker health checks
+  - **Pod restart survival test**
+  - Comprehensive troubleshooting guide (pod logs, topic creation, network, broker health, PVC issues)
+  - Production considerations for Kafka (replicas, StatefulSet, replication factor, monitoring, backups, security)
+
 ### Next Phases — TODO
-- [ ] Phase 2: Kafka deployment (split into files, deployment guide)
 - [ ] Phase 3: Application services (api-gateway, analytics, alert)
 - [ ] Phase 4: Monitoring (Prometheus, Grafana)
 - [ ] Phase 5: Ingress & networking
@@ -376,29 +406,43 @@ From **Docker Compose** → to **Kubernetes**:
 
 ---
 
-## Status: Phase 1 Complete — PostgreSQL Deployment Ready
+## Status: Phase 2 Complete — Kafka Deployment Ready
 
-**PostgreSQL is ready for deployment.**
+**PostgreSQL and Kafka are ready for deployment.**
 
 ### What's Included
 
-1. **Modular, Production-Ready Manifests**:
-   - PVC: Persistent storage that survives pod restarts
+#### Phase 1: PostgreSQL (4 files, ~290 lines)
+1. **Modular Manifests**:
+   - PVC: 20Gi persistent storage
    - Init ConfigMap: Schema creation (alerts table + indexes)
-   - Deployment: Pod with health checks, resource limits, restart policy
+   - Deployment: Pod with health checks, resource limits
    - Service: Internal DNS and load balancing
 
-2. **Comprehensive Deployment Guide** (DEPLOYMENT_GUIDE.md):
-   - 7-step deployment process with validation after each step
-   - 6 detailed verification procedures:
+2. **Deployment Guide Section**:
+   - 7-step deployment process with validation
+   - 6 detailed verification procedures
+   - Pod restart survival test
+   - Troubleshooting section
+
+#### Phase 2: Kafka (3 files, ~305 lines)
+1. **Modular Manifests**:
+   - PVC: 50Gi persistent storage
+   - Deployment: KRaft mode (broker + controller), dual listeners
+   - Service: Dual-port (9092 client, 9093 controller)
+
+2. **Deployment Guide Section** (250+ new lines):
+   - 3-step deployment process with validation
+   - 7 detailed verification procedures:
      - Pod status and logs
      - Health probe status
-     - Database connectivity from within cluster
-     - Alert table schema verification
+     - Topic creation (events.raw, events.processed, alerts, events.dlq)
+     - Topic listing and description
+     - Broker health checks
      - PVC binding verification
      - **Pod restart survival test** (proves data persistence)
-   - Troubleshooting section
-   - Quick reference commands
+   - Detailed troubleshooting section
+   - Production considerations for Kafka
 
 3. **Production Features**:
    - Liveness & readiness probes configured
@@ -408,29 +452,55 @@ From **Docker Compose** → to **Kubernetes**:
    - Recreate strategy for PVC compatibility
    - Comments explaining all fields
 
-### Verification Commands
+### Deployment Quick Start
 
+**Phase 1: PostgreSQL**
 ```bash
-# Deploy (Step 1-7 from DEPLOYMENT_GUIDE.md)
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/configmap.yaml
-kubectl create secret generic eventpulse-secrets --from-literal=POSTGRES_PASSWORD='...' ...
-kubectl apply -f k8s/postgres/postgres-pvc.yaml
-kubectl apply -f k8s/postgres/postgres-init-cm.yaml
-kubectl apply -f k8s/postgres/postgres-deployment.yaml
-kubectl apply -f k8s/postgres/postgres-service.yaml
-
-# Verify (from DEPLOYMENT_GUIDE.md section "Verification: PostgreSQL is Running")
+kubectl create secret generic eventpulse-secrets \
+  --from-literal=POSTGRES_PASSWORD='dev-password' \
+  --from-literal=DATABASE_DSN='host=postgres.eventpulse.svc.cluster.local port=5432 user=admin password=dev-password dbname=eventpulse sslmode=disable' \
+  --from-literal=GRAFANA_PASSWORD='dev-password' \
+  -n eventpulse
+kubectl apply -f k8s/postgres/*.yaml
 kubectl rollout status deployment/postgres -n eventpulse -w
-kubectl get pods -n eventpulse
+```
+
+**Phase 2: Kafka**
+```bash
+kubectl apply -f k8s/kafka/*.yaml
+kubectl rollout status deployment/kafka -n eventpulse -w
+
+# Create topics
+for topic in events.raw events.processed alerts events.dlq; do
+  kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+    /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 \
+    --create --topic $topic --partitions 1 --replication-factor 1
+done
+```
+
+### Verification Commands
+
+**PostgreSQL**:
+```bash
+kubectl get pods -n eventpulse -l app=postgres
 kubectl logs -n eventpulse -l app=postgres -f
 kubectl run -it --rm psql-client --image=postgres:16 --restart=Never -n eventpulse -- \
   psql -h postgres.eventpulse.svc.cluster.local -U admin -d eventpulse -c "SELECT COUNT(*) FROM alerts;"
-
-# Test pod restart survival
-kubectl delete pod -n eventpulse -l app=postgres
-kubectl get pods -n eventpulse -w  # Wait for new pod to be Running
-# Repeat psql query — data should still exist
 ```
 
-Next: Phase 2 — Kafka Deployment (using same modular approach)
+**Kafka**:
+```bash
+kubectl get pods -n eventpulse -l app=kafka
+kubectl logs -n eventpulse -l app=kafka -f
+kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka.eventpulse.svc.cluster.local:9092 --list
+```
+
+See DEPLOYMENT_GUIDE.md sections:
+- "Verification: PostgreSQL is Running" (6 procedures)
+- "Verification: Kafka is Running" (7 procedures)
+
+Next: Phase 3 — Application Services (API Gateway, Analytics, Alert Service)
