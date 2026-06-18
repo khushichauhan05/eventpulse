@@ -1,0 +1,176 @@
+---
+# API Gateway Deployment
+# Exposes transaction event ingestion and alert retrieval REST APIs.
+#
+# Port 8080: HTTP API endpoints
+#   - POST /events (publish transaction events to Kafka)
+#   - GET /alerts (retrieve stored fraud alerts)
+#   - GET /alert?id=N (retrieve single alert by ID)
+#   - GET /health (liveness check)
+#   - GET /metrics (Prometheus metrics)
+#
+# Replicas: 2 (demonstrates load distribution and rolling updates)
+# Strategy: RollingUpdate (one pod at a time, zero downtime)
+#
+# Configuration:
+#   - ConfigMap: service name, port, log level, Kafka brokers/topics
+#   - Secret: DATABASE_DSN (PostgreSQL connection with credentials)
+#
+# Health Checks:
+#   - Startup probe: allow 10s for initial startup
+#   - Readiness probe: HTTP GET /health (ready for traffic)
+#   - Liveness probe: HTTP GET /health (pod is alive)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: eventpulse
+  labels:
+    app: api-gateway
+    tier: services
+  annotations:
+    description: "EventPulse API Gateway - Transaction event ingestion and alert retrieval"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1           # Allow 1 extra pod during update
+      maxUnavailable: 0     # Keep all pods available (rolling)
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tier: services
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+      containers:
+      - name: api-gateway
+        image: eventpulse-api-gateway:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+
+        env:
+        - name: SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: API_SERVICE_NAME
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: API_PORT
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_BROKERS
+        - name: KAFKA_TOPIC_RAW
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_RAW
+        - name: KAFKA_TOPIC_PROCESSED
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_PROCESSED
+        - name: KAFKA_TOPIC_ALERTS
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_ALERTS
+        - name: KAFKA_TOPIC_DLQ
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_DLQ
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: LOG_LEVEL
+        - name: DATABASE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: eventpulse-secrets
+              key: DATABASE_DSN
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # Startup probe: give pod 10s to start before readiness/liveness checks
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          failureThreshold: 3
+          periodSeconds: 3
+          timeoutSeconds: 2
+
+        # Readiness probe: determine if pod is ready for traffic
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+
+        # Liveness probe: determine if pod is alive (restart if not)
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+# API Gateway Service
+# Exposes the API Gateway pods via Kubernetes DNS.
+#
+# Internal DNS: api-gateway.eventpulse.svc.cluster.local:8080
+# Traffic: Clients (within cluster) connect for event ingestion and alert retrieval
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: eventpulse
+  labels:
+    app: api-gateway
+    tier: services
+  annotations:
+    description: "API Gateway service (ClusterIP, internal-only)"
+spec:
+  type: ClusterIP
+  selector:
+    app: api-gateway
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http

@@ -2,7 +2,7 @@
 
 This guide walks through deploying EventPulse to Kubernetes step by step, starting with PostgreSQL.
 
-**Status**: Phase 2 — Kafka Deployment  
+**Status**: Phase 3 — Application Services Deployment  
 **Branch**: kubernetes-upgrade  
 **Target**: Production-ready Kubernetes setup
 
@@ -839,7 +839,280 @@ kubectl get storageclass
 
 When all verifications pass, Kafka is ready for the next phase: deploying the application services.
 
-**Next**: Phase 3 — Application Services (API Gateway, Analytics Service, Alert Service)
+---
+
+## Phase 3: Application Services Deployment
+
+Deploy the three EventPulse microservices: API Gateway, Analytics Service, and Alert Service.
+
+### Prerequisites
+
+- PostgreSQL deployed and running (Phase 1 completed)
+- Kafka deployed with topics created (Phase 2 completed)
+- EventPulse namespace and ConfigMap already exist
+- Docker images built and available locally:
+  - `eventpulse-api-gateway:latest`
+  - `eventpulse-analytics-service:latest`
+  - `eventpulse-alert-service:latest`
+
+### Step 1: Deploy API Gateway
+
+The API Gateway exposes REST endpoints for event ingestion and alert retrieval.
+
+```bash
+kubectl apply -f k8s/api-gateway/api-gateway-deployment.yaml
+```
+
+**Verify deployment**:
+```bash
+kubectl get deployment -n eventpulse api-gateway
+kubectl rollout status deployment/api-gateway -n eventpulse -w
+```
+
+### Step 2: Deploy Analytics Service
+
+The Analytics Service consumes raw events and computes risk scores.
+
+```bash
+kubectl apply -f k8s/analytics-service/analytics-service-deployment.yaml
+```
+
+**Verify deployment**:
+```bash
+kubectl get deployment -n eventpulse analytics-service
+kubectl rollout status deployment/analytics-service -n eventpulse -w
+```
+
+### Step 3: Deploy Alert Service
+
+The Alert Service consumes risk-scored events and generates fraud alerts.
+
+```bash
+kubectl apply -f k8s/alert-service/alert-service-deployment.yaml
+```
+
+**Verify deployment**:
+```bash
+kubectl get deployment -n eventpulse alert-service
+kubectl rollout status deployment/alert-service -n eventpulse -w
+```
+
+---
+
+## Verification: All Services Running
+
+### 1. Check All Pods
+
+```bash
+kubectl get pods -n eventpulse
+```
+
+**Expected output**:
+```
+NAME                                   READY   STATUS    RESTARTS   AGE
+postgres-xxxxx                         1/1     Running   0          5m
+kafka-xxxxx                            1/1     Running   0          3m
+api-gateway-xxxxx                      1/1     Running   0          30s
+api-gateway-yyyyy                      1/1     Running   0          30s
+analytics-service-xxxxx                1/1     Running   0          30s
+analytics-service-yyyyy                1/1     Running   0          30s
+alert-service-xxxxx                    1/1     Running   0          30s
+alert-service-yyyyy                    1/1     Running   0          30s
+```
+
+### 2. Check Service Logs
+
+**API Gateway logs** (watch for startup messages):
+```bash
+kubectl logs -n eventpulse deployment/api-gateway -f
+# Expect: "api gateway started" message
+```
+
+**Analytics Service logs**:
+```bash
+kubectl logs -n eventpulse deployment/analytics-service -f
+# Expect: "analytics service started"
+```
+
+**Alert Service logs**:
+```bash
+kubectl logs -n eventpulse deployment/alert-service -f
+# Expect: "alert service started"
+```
+
+### 3. Check Services
+
+```bash
+kubectl get service -n eventpulse
+```
+
+**Expected output**:
+```
+NAME                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+postgres             ClusterIP   10.xxx.xxx.xxx   <none>        5432/TCP   5m
+kafka                ClusterIP   10.xxx.xxx.xxx   <none>        9092/TCP   3m
+api-gateway          ClusterIP   10.xxx.xxx.xxx   <none>        8080/TCP   1m
+analytics-service    ClusterIP   10.xxx.xxx.xxx   <none>        8081/TCP   1m
+alert-service        ClusterIP   10.xxx.xxx.xxx   <none>        8082/TCP   1m
+```
+
+### 4. Health Checks
+
+**API Gateway health**:
+```bash
+kubectl run -it --rm debug --image=busybox --restart=Never -n eventpulse -- \
+  wget -qO- http://api-gateway:8080/health
+# Expected: {"status":"ok"}
+```
+
+**Analytics Service health**:
+```bash
+kubectl run -it --rm debug --image=busybox --restart=Never -n eventpulse -- \
+  wget -qO- http://analytics-service:8081/health
+# Expected: {"status":"ok","...}
+```
+
+**Alert Service health**:
+```bash
+kubectl run -it --rm debug --image=busybox --restart=Never -n eventpulse -- \
+  wget -qO- http://alert-service:8082/health
+# Expected: {"status":"ok","...}
+```
+
+### 5. Test End-to-End Flow
+
+**Send a transaction event**:
+```bash
+kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -n eventpulse -- \
+  curl -X POST http://api-gateway:8080/events \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"test_user","event_type":"purchase","amount":75000}'
+# Expected: {"message":"Event Published"}
+```
+
+**Wait for processing** (3-5 seconds for full pipeline):
+```bash
+sleep 5
+```
+
+**Check generated alerts**:
+```bash
+kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -n eventpulse -- \
+  curl http://api-gateway:8080/alerts
+# Expected: JSON array with alert(s) for high-risk transaction
+```
+
+### 6. Check Prometheus Metrics
+
+**API Gateway metrics**:
+```bash
+kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -n eventpulse -- \
+  curl http://api-gateway:8080/metrics | grep eventpulse_events_published_total
+# Shows event publishing counts
+```
+
+**Analytics Service metrics**:
+```bash
+kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -n eventpulse -- \
+  curl http://analytics-service:8081/metrics | grep eventpulse_events_processed_total
+# Shows event processing counts
+```
+
+**Alert Service metrics**:
+```bash
+kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -n eventpulse -- \
+  curl http://alert-service:8082/metrics | grep eventpulse_alerts_generated_total
+# Shows alert generation counts
+```
+
+---
+
+## Troubleshooting: Application Services
+
+### Pod not starting (CrashLoopBackOff)
+
+```bash
+kubectl describe pod -n eventpulse <pod-name>
+kubectl logs -n eventpulse <pod-name> --previous
+```
+
+**Common causes**:
+- ConfigMap or Secret not created (check: `kubectl get configmap/secret -n eventpulse`)
+- Database not accessible (check PostgreSQL pod)
+- Kafka not accessible (check Kafka pod and topics)
+- Image not available locally (build with `docker build`)
+
+### Pod running but not ready
+
+```bash
+kubectl describe pod -n eventpulse -l app=<service-name>
+# Check: Probes section for startup/readiness failures
+```
+
+**Common causes**:
+- Health endpoint not responding (application startup slow)
+- Kafka/PostgreSQL not reachable yet (wait 5-10 seconds)
+- Port mismatch in ConfigMap (check port values)
+
+### Services can't communicate
+
+```bash
+kubectl run -it --rm debug --image=busybox --restart=Never -n eventpulse -- \
+  nslookup api-gateway.eventpulse.svc.cluster.local
+```
+
+**Common causes**:
+- DNS resolution issue (rare in K8s)
+- Service not created (check: `kubectl get service -n eventpulse`)
+- Network policies blocking traffic (if configured)
+
+### Metrics not scraping
+
+Check Prometheus targets:
+```bash
+# Port-forward Prometheus
+kubectl port-forward -n eventpulse svc/prometheus 9090:9090
+# Open http://localhost:9090/targets
+```
+
+**Common causes**:
+- Prometheus scrape configuration missing (check k8s/monitoring/prometheus.yaml)
+- Endpoint annotations not on pods (should have `prometheus.io/scrape: "true"`)
+
+---
+
+## Full Stack Deployment
+
+All services ready:
+
+```bash
+# Phase 1: PostgreSQL
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl create secret generic eventpulse-secrets --from-literal=... -n eventpulse
+kubectl apply -f k8s/postgres/*.yaml
+
+# Phase 2: Kafka
+kubectl apply -f k8s/kafka/*.yaml
+
+# Create topics
+for topic in events.raw events.processed alerts events.dlq; do
+  kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n eventpulse -- \
+    /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+    --create --topic $topic --partitions 1 --replication-factor 1
+done
+
+# Phase 3: Application Services
+kubectl apply -f k8s/api-gateway/api-gateway-deployment.yaml
+kubectl apply -f k8s/analytics-service/analytics-service-deployment.yaml
+kubectl apply -f k8s/alert-service/alert-service-deployment.yaml
+
+# Verify
+kubectl get pods -n eventpulse
+kubectl get service -n eventpulse
+```
+
+**Next**: Phase 4 — Prometheus & Grafana deployment (monitoring)
 
 ---
 

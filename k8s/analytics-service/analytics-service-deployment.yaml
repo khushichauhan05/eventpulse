@@ -1,0 +1,183 @@
+---
+# Analytics Service Deployment
+# Consumes raw transaction events from Kafka and computes risk scores.
+#
+# Function:
+#   - Consumes from: events.raw (Kafka topic)
+#   - Publishes to: events.processed (risk-scored events)
+#   - Dead-letter: events.dlq (malformed messages)
+#
+# Scaling:
+#   - Kafka consumer group: analytics-group
+#   - Each replica joins the group (parallel message consumption)
+#   - Partitions distributed across replicas
+#
+# Ports:
+#   - 8080: Main application (reserved for future use)
+#   - 8081: Health check + Prometheus metrics
+#
+# Replicas: 2 (demonstrates Kafka consumer group scaling)
+# Strategy: RollingUpdate (one pod at a time)
+#
+# Configuration:
+#   - ConfigMap: Kafka brokers/topics, consumer group, log level
+#   - Secret: DATABASE_DSN (for metadata operations)
+#
+# Health Checks:
+#   - Startup: 10s grace period
+#   - Readiness: HTTP GET /health:8081
+#   - Liveness: HTTP GET /health:8081 (restart on failure)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: eventpulse
+  labels:
+    app: analytics-service
+    tier: services
+  annotations:
+    description: "EventPulse Analytics Service - Risk scoring and event enrichment"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        tier: services
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
+    spec:
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+      containers:
+      - name: analytics-service
+        image: eventpulse-analytics-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: app
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+
+        env:
+        - name: SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: ANALYTICS_SERVICE_NAME
+        - name: HEALTH_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: ANALYTICS_HEALTH_PORT
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_BROKERS
+        - name: KAFKA_TOPIC_RAW
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_RAW
+        - name: KAFKA_TOPIC_PROCESSED
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_PROCESSED
+        - name: KAFKA_TOPIC_DLQ
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_DLQ
+        - name: KAFKA_ANALYTICS_GROUP
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_ANALYTICS_GROUP
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: LOG_LEVEL
+        - name: DATABASE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: eventpulse-secrets
+              key: DATABASE_DSN
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          failureThreshold: 3
+          periodSeconds: 3
+          timeoutSeconds: 2
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+# Analytics Service Service
+# Exposes health and metrics endpoints.
+#
+# Internal DNS: analytics-service.eventpulse.svc.cluster.local:8081
+# Used by: Prometheus (metrics scraping), health checks
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: eventpulse
+  labels:
+    app: analytics-service
+    tier: services
+  annotations:
+    description: "Analytics Service health and metrics (ClusterIP, internal-only)"
+spec:
+  type: ClusterIP
+  selector:
+    app: analytics-service
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: health

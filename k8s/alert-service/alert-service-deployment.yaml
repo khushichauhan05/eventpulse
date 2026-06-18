@@ -1,0 +1,189 @@
+---
+# Alert Service Deployment
+# Consumes risk-scored events and generates fraud alerts.
+#
+# Function:
+#   - Consumes from: events.processed (Kafka topic, risk-scored events)
+#   - Publishes to: alerts (Kafka topic, generated alerts)
+#   - Dead-letter: events.dlq (malformed messages)
+#   - Stores to: PostgreSQL (persistent alert storage)
+#
+# Scaling:
+#   - Kafka consumer group: alert-group
+#   - Each replica joins the group (parallel message consumption)
+#   - Partitions distributed across replicas
+#
+# Ports:
+#   - 8080: Main application (reserved for future use)
+#   - 8082: Health check + Prometheus metrics
+#
+# Replicas: 2 (demonstrates Kafka consumer group scaling)
+# Strategy: RollingUpdate (one pod at a time)
+#
+# Configuration:
+#   - ConfigMap: Kafka brokers/topics, consumer group, log level
+#   - Secret: DATABASE_DSN (PostgreSQL connection with credentials)
+#
+# Database:
+#   - Requires PostgreSQL alerts table (created during init)
+#   - Uses idempotency key (event_id) to prevent duplicate alerts
+#   - INSERT ... ON CONFLICT DO NOTHING ensures Kafka redeliveries are safe
+#
+# Health Checks:
+#   - Startup: 10s grace period
+#   - Readiness: HTTP GET /health:8082
+#   - Liveness: HTTP GET /health:8082 (restart on failure)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-service
+  namespace: eventpulse
+  labels:
+    app: alert-service
+    tier: services
+  annotations:
+    description: "EventPulse Alert Service - Fraud alert generation and storage"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: alert-service
+  template:
+    metadata:
+      labels:
+        app: alert-service
+        tier: services
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/metrics"
+    spec:
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+
+      containers:
+      - name: alert-service
+        image: eventpulse-alert-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: app
+          protocol: TCP
+        - containerPort: 8082
+          name: health
+          protocol: TCP
+
+        env:
+        - name: SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: ALERT_SERVICE_NAME
+        - name: HEALTH_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: ALERT_HEALTH_PORT
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_BROKERS
+        - name: KAFKA_TOPIC_PROCESSED
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_PROCESSED
+        - name: KAFKA_TOPIC_ALERTS
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_ALERTS
+        - name: KAFKA_TOPIC_DLQ
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_DLQ
+        - name: KAFKA_ALERT_GROUP
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_ALERT_GROUP
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: LOG_LEVEL
+        - name: DATABASE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: eventpulse-secrets
+              key: DATABASE_DSN
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          failureThreshold: 3
+          periodSeconds: 3
+          timeoutSeconds: 2
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 2
+          successThreshold: 1
+          failureThreshold: 3
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+# Alert Service Service
+# Exposes health and metrics endpoints.
+#
+# Internal DNS: alert-service.eventpulse.svc.cluster.local:8082
+# Used by: Prometheus (metrics scraping), health checks
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-service
+  namespace: eventpulse
+  labels:
+    app: alert-service
+    tier: services
+  annotations:
+    description: "Alert Service health and metrics (ClusterIP, internal-only)"
+spec:
+  type: ClusterIP
+  selector:
+    app: alert-service
+  ports:
+  - port: 8082
+    targetPort: 8082
+    protocol: TCP
+    name: health

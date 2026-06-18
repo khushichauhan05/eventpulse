@@ -2,7 +2,7 @@
 
 **Branch**: `kubernetes-upgrade`  
 **Base**: v1.0.0 (Docker Compose stable)  
-**Phase**: Phase 2 — Kafka Deployment
+**Phase**: Phase 3 — Application Services Deployment
 
 ---
 
@@ -343,7 +343,7 @@ From **Docker Compose** → to **Kubernetes**:
 - `monitoring/prometheus.yaml` — 200+ lines (unchanged, deployed in Phase 4)
 - `README.md` — 600+ lines (comprehensive guide)
 
-**Total**: ~2,600 lines of manifests + documentation (including DEPLOYMENT_GUIDE.md extended with Phase 2)
+**Total**: ~3,200 lines of manifests + documentation (including DEPLOYMENT_GUIDE.md extended through Phase 3)
 
 ---
 
@@ -397,8 +397,39 @@ From **Docker Compose** → to **Kubernetes**:
   - Comprehensive troubleshooting guide (pod logs, topic creation, network, broker health, PVC issues)
   - Production considerations for Kafka (replicas, StatefulSet, replication factor, monitoring, backups, security)
 
+### Phase 3 — Application Services Deployment — Completed ✅
+- [x] API Gateway deployment
+  - [x] `api-gateway-deployment.yaml` — 2 replicas, all probes, ConfigMap + Secret
+  - [x] Service (ClusterIP) for internal DNS
+  - [x] Ports: 8080 (HTTP API + metrics)
+  - [x] Startup/readiness/liveness probes
+- [x] Analytics Service deployment
+  - [x] `analytics-service-deployment.yaml` — 2 replicas, Kafka consumer group scaling
+  - [x] Service (ClusterIP) for internal DNS
+  - [x] Ports: 8081 (health + metrics)
+  - [x] Startup/readiness/liveness probes
+- [x] Alert Service deployment
+  - [x] `alert-service-deployment.yaml` — 2 replicas, PostgreSQL integration
+  - [x] Service (ClusterIP) for internal DNS
+  - [x] Ports: 8082 (health + metrics)
+  - [x] Startup/readiness/liveness probes
+- [x] Configuration
+  - [x] ConfigMap injection (all env vars except secrets)
+  - [x] Secret injection (DATABASE_DSN)
+- [x] Reliability
+  - [x] RollingUpdate strategy (maxSurge=1, maxUnavailable=0)
+  - [x] Resource requests: 100m CPU, 128Mi memory (min)
+  - [x] Resource limits: 500m CPU, 512Mi memory (max)
+  - [x] startupProbe: 10s grace, 3 failures before restart
+  - [x] readinessProbe: 5s periodic, 3 failures to deregister
+  - [x] livenessProbe: 10s periodic, 3 failures to restart
+- [x] **DEPLOYMENT_GUIDE.md** extended with Phase 3 (350+ new lines)
+  - 3-step deployment (API GW, Analytics, Alert)
+  - 6 verification procedures (pods, logs, services, health, E2E test, metrics)
+  - Comprehensive troubleshooting section
+  - Quick reference full-stack deployment commands
+
 ### Next Phases — TODO
-- [ ] Phase 3: Application services (api-gateway, analytics, alert)
 - [ ] Phase 4: Monitoring (Prometheus, Grafana)
 - [ ] Phase 5: Ingress & networking
 - [ ] Phase 6: HPA, autoscaling
@@ -406,9 +437,9 @@ From **Docker Compose** → to **Kubernetes**:
 
 ---
 
-## Status: Phase 2 Complete — Kafka Deployment Ready
+## Status: Phase 3 Complete — All Infrastructure Ready
 
-**PostgreSQL and Kafka are ready for deployment.**
+**PostgreSQL, Kafka, and all three microservices are ready for deployment.**
 
 ### What's Included
 
