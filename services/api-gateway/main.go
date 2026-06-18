@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	_ "github.com/lib/pq"
 	"github.com/segmentio/kafka-go"
@@ -105,6 +106,39 @@ func getAlerts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(alerts)
 }
 
+func getAlertByID(w http.ResponseWriter, r *http.Request) {
+
+	idStr := r.URL.Query().Get("id")
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	var alert Alert
+
+	err = db.QueryRow(
+		`SELECT id,user_id,risk_score,message
+		 FROM alerts
+		 WHERE id=$1`,
+		id,
+	).Scan(
+		&alert.ID,
+		&alert.UserID,
+		&alert.RiskScore,
+		&alert.Message,
+	)
+
+	if err != nil {
+		http.Error(w, "Alert Not Found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(alert)
+}
+
 func main() {
 	db, _ = sql.Open(
 		"postgres",
@@ -114,6 +148,7 @@ func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/events", createEvent)
 	http.HandleFunc("/alerts", getAlerts)
+	http.HandleFunc("/alert", getAlertByID)
 	fmt.Println("Server started on :8080")
 
 	err := http.ListenAndServe(":8080", nil)
