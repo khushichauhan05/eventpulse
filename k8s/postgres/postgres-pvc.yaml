@@ -1,0 +1,28 @@
+---
+# PostgreSQL Persistent Volume Claim
+# Allocates 20Gi of persistent storage for PostgreSQL data directory.
+# Storage class uses the cluster default. For production, specify a named StorageClass.
+#
+# This PVC is:
+# - Namespace-scoped to eventpulse
+# - ReadWriteOnce (accessible by one pod at a time)
+# - Retained after pod deletion (data survives restarts)
+# - Mounted at /var/lib/postgresql/data in the pod
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: eventpulse
+  labels:
+    app: postgres
+    component: database
+  annotations:
+    description: "PostgreSQL data storage (20Gi, ReadWriteOnce)"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  # storageClassName: fast-ssd  # Uncomment and set for production

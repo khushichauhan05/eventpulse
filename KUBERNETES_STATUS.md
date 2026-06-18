@@ -2,7 +2,7 @@
 
 **Branch**: `kubernetes-upgrade`  
 **Base**: v1.0.0 (Docker Compose stable)  
-**Phase**: Foundation & Configuration Setup
+**Phase**: Phase 1 — PostgreSQL Deployment
 
 ---
 
@@ -36,13 +36,19 @@
 
 ### Kubernetes Manifests
 
-- [x] **PostgreSQL**
-  - Single-replica Deployment (PostgreSQL 16)
-  - PersistentVolumeClaim (20Gi)
-  - ConfigMap with SQL initialization (alerts table schema)
-  - Service (ClusterIP, internal DNS)
-  - Liveness & readiness probes
-  - Resource requests/limits: 250m CPU, 256Mi memory (min); 1000m CPU, 1Gi (max)
+- [x] **PostgreSQL** (Modularized & Production-Ready)
+  - `k8s/postgres/postgres-pvc.yaml` — 20Gi PersistentVolumeClaim with annotations
+  - `k8s/postgres/postgres-init-cm.yaml` — SQL initialization ConfigMap
+  - `k8s/postgres/postgres-deployment.yaml` — Single-replica Deployment (PostgreSQL 16)
+    - Mounts PVC at `/var/lib/postgresql/data` (data survives pod restarts)
+    - Mounts init ConfigMap at `/docker-entrypoint-initdb.d`
+    - Credentials injected from Secret (POSTGRES_PASSWORD)
+    - Environment from ConfigMap (POSTGRES_DB, POSTGRES_USER)
+  - `k8s/postgres/postgres-service.yaml` — ClusterIP Service (postgres.eventpulse.svc.cluster.local:5432)
+  - Liveness probe: `pg_isready` every 10s (restart after 3 failures)
+  - Readiness probe: `pg_isready` every 5s (remove from service after 3 failures)
+  - Resource requests: 250m CPU, 256Mi memory; Limits: 1000m CPU, 1Gi memory
+  - Strategy: Recreate (required for RWO PVC)
 
 - [x] **Kafka**
   - Single-node Deployment (Apache Kafka, KRaft mode)
@@ -85,7 +91,28 @@
   - RBAC: ServiceAccount + ClusterRole + ClusterRoleBinding
   - Auto-discovers pods in eventpulse namespace via label selectors
 
-### Documentation
+### Deployment & Documentation
+
+- [x] **DEPLOYMENT_GUIDE.md** — Phase-by-phase PostgreSQL deployment guide
+  - Step-by-step kubectl commands with explanations
+  - Namespace creation
+  - ConfigMap application
+  - Secret creation (3 options: kubectl, .env file, Sealed Secrets)
+  - PVC verification
+  - Deployment rollout monitoring
+  - Service verification
+  - **Comprehensive verification steps**:
+    - Pod status checks
+    - Log inspection (expect PostgreSQL ready messages)
+    - Health probe verification
+    - Database connectivity tests (from temporary pod)
+    - Alert table schema verification
+    - PVC binding verification
+    - Port forwarding for local testing
+    - **Pod restart survival test**: Proves data persists after pod deletion
+  - Troubleshooting guide
+  - Production considerations
+  - Quick reference commands
 
 - [x] **k8s/README.md** — Comprehensive guide covering:
   - Directory structure and file descriptions
@@ -285,46 +312,125 @@ From **Docker Compose** → to **Kubernetes**:
 ## Files Summary
 
 ### Root Level
-- `KUBERNETES_STATUS.md` — This file
+- `KUBERNETES_STATUS.md` — Project status tracking
+- `DEPLOYMENT_GUIDE.md` — **NEW** Phase-by-phase deployment instructions (650+ lines)
 
 ### k8s/ Directory
 - `namespace.yaml` — 12 lines
 - `configmap.yaml` — 32 lines
 - `secrets.yaml` — 30 lines (template with documentation)
-- `postgres/postgres.yaml` — 115 lines
-- `kafka/kafka.yaml` — 110 lines
-- `api-gateway/api-gateway.yaml` — 100 lines
-- `analytics-service/analytics-service.yaml` — 125 lines
-- `alert-service/alert-service.yaml` — 125 lines
-- `monitoring/prometheus.yaml` — 200+ lines
+- `postgres/` directory:
+  - `postgres-pvc.yaml` — **NEW** 25 lines (PVC with annotations)
+  - `postgres-init-cm.yaml` — **NEW** 45 lines (init SQL schema)
+  - `postgres-deployment.yaml` — **NEW** 185 lines (deployment with probes)
+  - `postgres-service.yaml` — **NEW** 35 lines (ClusterIP service)
+- `kafka/kafka.yaml` — 110 lines (unchanged, but split coming in Phase 2)
+- `api-gateway/api-gateway.yaml` — 100 lines (unchanged, deployed in Phase 3)
+- `analytics-service/analytics-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
+- `alert-service/alert-service.yaml` — 125 lines (unchanged, deployed in Phase 3)
+- `monitoring/prometheus.yaml` — 200+ lines (unchanged, deployed in Phase 4)
 - `README.md` — 600+ lines (comprehensive guide)
 
-**Total**: ~1,300 lines of manifests + documentation
+**Total**: ~2,000 lines of manifests + documentation (including DEPLOYMENT_GUIDE.md)
 
 ---
 
-## Checklist for Foundation Completion
+## Checklist for Phase 1: PostgreSQL Deployment
 
+### Foundation (Phase 0) — Completed ✅
 - [x] Directory structure created
 - [x] Namespace defined
 - [x] ConfigMap with all non-sensitive configuration
 - [x] Secret template with guidance
-- [x] PostgreSQL manifest (Deployment + PVC + Service + ConfigMap)
-- [x] Kafka manifest (Deployment + PVC + Service)
-- [x] API Gateway manifest (Deployment + Service)
-- [x] Analytics Service manifest (Deployment + Service)
-- [x] Alert Service manifest (Deployment + Service)
-- [x] Prometheus manifest (Deployment + ConfigMap + Service + RBAC)
-- [x] Comprehensive k8s/README.md with deployment steps
-- [x] KUBERNETES_STATUS.md tracking progress
+- [x] Comprehensive k8s/README.md
+
+### Phase 1 — PostgreSQL Deployment — Completed ✅
+- [x] PostgreSQL modularized into separate files
+  - [x] `postgres-pvc.yaml` — PVC with annotations
+  - [x] `postgres-init-cm.yaml` — SQL schema initialization
+  - [x] `postgres-deployment.yaml` — Deployment with probes, health checks
+  - [x] `postgres-service.yaml` — ClusterIP service
+- [x] PVC: 20Gi persistent storage, ReadWriteOnce, survives pod restarts
+- [x] ConfigMap: init.sql runs on first startup (creates alerts table + indexes)
+- [x] Secret integration: POSTGRES_PASSWORD from Secret, DATABASE_DSN injected
+- [x] Liveness probe: `pg_isready` every 10s (restart on failure)
+- [x] Readiness probe: `pg_isready` every 5s (deregister from service on failure)
+- [x] Pod restart survival: Data persists via PVC
+- [x] **DEPLOYMENT_GUIDE.md** (650+ lines)
+  - Step-by-step kubectl apply commands with explanations
+  - 7 deployment steps with verification after each
+  - Comprehensive verification commands
+  - **Pod restart survival test procedure**
+  - Troubleshooting guide
+  - Production considerations
+  - Quick reference command list
 - [x] Docker Compose remains untouched
-- [x] No Helm, Ingress, HPA, or monitoring changes
-- [x] Ready for PR review
+
+### Next Phases — TODO
+- [ ] Phase 2: Kafka deployment (split into files, deployment guide)
+- [ ] Phase 3: Application services (api-gateway, analytics, alert)
+- [ ] Phase 4: Monitoring (Prometheus, Grafana)
+- [ ] Phase 5: Ingress & networking
+- [ ] Phase 6: HPA, autoscaling
+- [ ] Phase 7: Production hardening
 
 ---
 
-## Status: Ready for Review
+## Status: Phase 1 Complete — PostgreSQL Deployment Ready
 
-The Kubernetes foundation is complete and documented. All manifests are declarative, follow Kubernetes best practices, and are ready to be deployed to a Kubernetes cluster with minimal configuration (secrets creation).
+**PostgreSQL is ready for deployment.**
 
-Next: Await feedback before proceeding to Phase 2 (Ingress/Networking).
+### What's Included
+
+1. **Modular, Production-Ready Manifests**:
+   - PVC: Persistent storage that survives pod restarts
+   - Init ConfigMap: Schema creation (alerts table + indexes)
+   - Deployment: Pod with health checks, resource limits, restart policy
+   - Service: Internal DNS and load balancing
+
+2. **Comprehensive Deployment Guide** (DEPLOYMENT_GUIDE.md):
+   - 7-step deployment process with validation after each step
+   - 6 detailed verification procedures:
+     - Pod status and logs
+     - Health probe status
+     - Database connectivity from within cluster
+     - Alert table schema verification
+     - PVC binding verification
+     - **Pod restart survival test** (proves data persistence)
+   - Troubleshooting section
+   - Quick reference commands
+
+3. **Production Features**:
+   - Liveness & readiness probes configured
+   - Resource requests/limits set
+   - ConfigMap for non-sensitive config
+   - Secret for credentials
+   - Recreate strategy for PVC compatibility
+   - Comments explaining all fields
+
+### Verification Commands
+
+```bash
+# Deploy (Step 1-7 from DEPLOYMENT_GUIDE.md)
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl create secret generic eventpulse-secrets --from-literal=POSTGRES_PASSWORD='...' ...
+kubectl apply -f k8s/postgres/postgres-pvc.yaml
+kubectl apply -f k8s/postgres/postgres-init-cm.yaml
+kubectl apply -f k8s/postgres/postgres-deployment.yaml
+kubectl apply -f k8s/postgres/postgres-service.yaml
+
+# Verify (from DEPLOYMENT_GUIDE.md section "Verification: PostgreSQL is Running")
+kubectl rollout status deployment/postgres -n eventpulse -w
+kubectl get pods -n eventpulse
+kubectl logs -n eventpulse -l app=postgres -f
+kubectl run -it --rm psql-client --image=postgres:16 --restart=Never -n eventpulse -- \
+  psql -h postgres.eventpulse.svc.cluster.local -U admin -d eventpulse -c "SELECT COUNT(*) FROM alerts;"
+
+# Test pod restart survival
+kubectl delete pod -n eventpulse -l app=postgres
+kubectl get pods -n eventpulse -w  # Wait for new pod to be Running
+# Repeat psql query — data should still exist
+```
+
+Next: Phase 2 — Kafka Deployment (using same modular approach)

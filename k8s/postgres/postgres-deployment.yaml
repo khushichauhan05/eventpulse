@@ -1,0 +1,159 @@
+---
+# PostgreSQL Deployment
+# Runs a single-replica PostgreSQL 16 database pod.
+#
+# Persistence:
+# - Data stored in PVC "postgres-pvc" (20Gi, ReadWriteOnce)
+# - PVC persists after pod deletion
+# - Pod restarts use the same PVC → data survives
+#
+# Credentials:
+# - Username: from ConfigMap (eventpulse-config POSTGRES_USER="admin")
+# - Password: from Secret (eventpulse-secrets POSTGRES_PASSWORD)
+# - Database: from ConfigMap (eventpulse-config POSTGRES_DB="eventpulse")
+#
+# Initialization:
+# - init.sql mounted from ConfigMap (postgres-init)
+# - Runs automatically on first startup via Docker entrypoint
+# - Creates alerts table with indexes
+#
+# Health Checks:
+# - Liveness probe: pg_isready check every 10s (pod restart after 3 failures)
+# - Readiness probe: pg_isready check every 5s (remove from service after 3 failures)
+# - Initial delays staggered to allow startup time
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: eventpulse
+  labels:
+    app: postgres
+    tier: database
+  annotations:
+    description: "PostgreSQL 16 database for EventPulse alerts storage"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Required for RWO PVC (no concurrent pods)
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: database
+      annotations:
+        prometheus.io/scrape: "false"  # PostgreSQL doesn't expose Prometheus metrics by default
+    spec:
+      # Pod restart policy
+      restartPolicy: Always
+
+      # Security context (optional, for production)
+      # securityContext:
+      #   fsGroup: 999
+      #   runAsNonRoot: true
+      #   runAsUser: 999
+
+      containers:
+      - name: postgres
+        image: postgres:16
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - containerPort: 5432
+          name: postgres
+          protocol: TCP
+
+        # Environment variables for PostgreSQL
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: eventpulse-secrets
+              key: POSTGRES_PASSWORD
+
+        # Optional: PostgreSQL configuration via environment
+        - name: POSTGRES_INITDB_ARGS
+          value: "-c shared_buffers=256MB -c max_connections=100"
+
+        # Volume mounts
+        volumeMounts:
+        # Data directory: persisted via PVC
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+          subPath: postgres  # Subdirectory within PVC to avoid permission issues
+
+        # Initialization scripts: mounted from ConfigMap
+        - name: init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+
+        # Resource requests and limits
+        resources:
+          requests:
+            cpu: 250m              # Minimum CPU (0.25 cores)
+            memory: 256Mi          # Minimum memory
+          limits:
+            cpu: 1000m             # Maximum CPU (1 core)
+            memory: 1Gi            # Maximum memory
+
+        # Liveness probe: restart pod if database becomes unresponsive
+        # pg_isready returns 0 if ready, 3 if rejecting connections
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          # Wait 30s after pod start before first check (allow initialization)
+          initialDelaySeconds: 30
+          # Check every 10s
+          periodSeconds: 10
+          # Allow 5 seconds for response
+          timeoutSeconds: 5
+          # Restart after 3 consecutive failures (30s)
+          failureThreshold: 3
+          # Success is 1 consecutive pass
+          successThreshold: 1
+
+        # Readiness probe: remove from service if database is unavailable
+        # More lenient than liveness (doesn't restart)
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+          # Wait 10s after pod start before first check
+          initialDelaySeconds: 10
+          # Check every 5s
+          periodSeconds: 5
+          # Allow 2 seconds for response
+          timeoutSeconds: 2
+          # Mark not-ready after 3 consecutive failures
+          failureThreshold: 3
+          # Success is 1 consecutive pass
+          successThreshold: 1
+
+      # Volumes: PVC + ConfigMap
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+
+      - name: init-scripts
+        configMap:
+          name: postgres-init
+          defaultMode: 0755  # Execute permission for init scripts

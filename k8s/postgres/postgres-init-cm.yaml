@@ -1,0 +1,58 @@
+---
+# PostgreSQL Initialization ConfigMap
+# Contains the SQL schema and initialization script.
+# Mounted at /docker-entrypoint-initdb.d in the postgres container.
+#
+# Docker entrypoint automatically runs all *.sql files in alphabetical order
+# before the database becomes available. This ensures the alerts table
+# and indexes are created on first startup.
+#
+# Changes to this ConfigMap do NOT affect existing databases.
+# To update schema on running database, use kubectl exec to run SQL manually.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: eventpulse
+  labels:
+    app: postgres
+    component: database
+  annotations:
+    description: "PostgreSQL initialization SQL schema"
+data:
+  001-init.sql: |
+    -- Create alerts table with schema for EventPulse
+    --
+    -- Columns:
+    --   id: Auto-incremented primary key
+    --   event_id: Unique identifier from Kafka message (for idempotency)
+    --   user_id: User who triggered the transaction
+    --   risk_score: Fraud risk score (0-100)
+    --   message: Alert message
+    --   created_at: Timestamp (UTC)
+    --
+    -- Constraints:
+    --   UNIQUE (event_id): Ensures duplicate Kafka messages don't create duplicate alerts
+    --   NOT NULL event_id: All alerts must have an associated event
+    --
+    -- Indexes:
+    --   idx_alerts_user_id: Query alerts by user (GET /alerts?user_id=...)
+    --   idx_alerts_created_at: Query recent alerts (ORDER BY created_at DESC)
+
+    CREATE TABLE IF NOT EXISTS alerts (
+        id         SERIAL PRIMARY KEY,
+        event_id   TEXT        NOT NULL DEFAULT '',
+        user_id    TEXT        NOT NULL,
+        risk_score INT         NOT NULL,
+        message    TEXT        NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_alerts_event_id UNIQUE (event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_alerts_user_id    ON alerts (user_id);
+    CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts (created_at DESC);
+
+    -- Grant permissions to the application user (optional, for security isolation)
+    -- GRANT SELECT, INSERT ON alerts TO app_user;
+    -- GRANT USAGE, SELECT ON SEQUENCE alerts_id_seq TO app_user;

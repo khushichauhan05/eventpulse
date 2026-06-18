@@ -1,0 +1,46 @@
+---
+# PostgreSQL Service
+# Exposes the PostgreSQL pod on port 5432 within the cluster.
+#
+# Service DNS: postgres.eventpulse.svc.cluster.local
+# All services connect using this DNS name (not IP addresses).
+#
+# Type: ClusterIP (internal-only, no external access)
+# - Services can connect from within the cluster
+# - Not exposed outside Kubernetes
+#
+# Port mapping:
+#   Service port 5432 → Pod port 5432
+#   Service name: postgres
+#   Protocol: TCP
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: eventpulse
+  labels:
+    app: postgres
+    tier: database
+  annotations:
+    description: "PostgreSQL internal service (ClusterIP)"
+spec:
+  # Service type: ClusterIP = internal-only
+  type: ClusterIP
+
+  # Pod selector: route traffic to pods with app=postgres label
+  selector:
+    app: postgres
+
+  # Ports
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+
+  # Session affinity (optional, for stickiness)
+  # sessionAffinity: ClientIP
+  # sessionAffinityConfig:
+  #   clientIP:
+  #     timeoutSeconds: 10800
