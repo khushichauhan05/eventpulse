@@ -1,0 +1,6 @@
+.git
+.idea
+.vscode
+**/*_test.go
+**/bin
+**/*.log

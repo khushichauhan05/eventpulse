@@ -2,84 +2,32 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"errors"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/segmentio/kafka-go"
+	"github.com/apekshita/eventpulse/internal/config"
+	"github.com/apekshita/eventpulse/internal/health"
+	"github.com/apekshita/eventpulse/internal/logging"
+	"github.com/apekshita/eventpulse/internal/services"
 )
 
-type Event struct {
-	UserID    string  `json:"user_id"`
-	EventType string  `json:"event_type"`
-	Amount    float64 `json:"amount"`
-}
-
-type ProcessedEvent struct {
-	UserID    string  `json:"user_id"`
-	EventType string  `json:"event_type"`
-	Amount    float64 `json:"amount"`
-	RiskScore int     `json:"risk_score"`
-}
-
 func main() {
+	cfg := config.Load("analytics-service")
+	logger := logging.New(cfg.ServiceName, cfg.LogLevel)
 
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{"localhost:9092"},
-		Topic:   "events.raw",
-		GroupID: "analytics-group",
-	})
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	writer := &kafka.Writer{
-		Addr:     kafka.TCP("localhost:9092"),
-		Topic:    "events.processed",
-		Balancer: &kafka.LeastBytes{},
-	}
-
-	fmt.Println("Analytics Service Started...")
-
-	for {
-
-		message, err := reader.ReadMessage(context.Background())
-		if err != nil {
-			fmt.Println("Read Error:", err)
-			continue
+	go func() {
+		if err := services.StartAnalyticsHealthServer(ctx, cfg, logger, health.NewHandler(cfg.ServiceName)); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error("analytics health server stopped", "error", err)
 		}
+	}()
 
-		var event Event
-
-		err = json.Unmarshal(message.Value, &event)
-		if err != nil {
-			fmt.Println("JSON Error:", err)
-			continue
-		}
-
-		riskScore := 20
-
-		if event.Amount > 10000 {
-			riskScore = 90
-		}
-
-		processed := ProcessedEvent{
-			UserID:    event.UserID,
-			EventType: event.EventType,
-			Amount:    event.Amount,
-			RiskScore: riskScore,
-		}
-
-		processedBytes, _ := json.Marshal(processed)
-
-		err = writer.WriteMessages(
-			context.Background(),
-			kafka.Message{
-				Value: processedBytes,
-			},
-		)
-
-		if err != nil {
-			fmt.Println("Publish Error:", err)
-			continue
-		}
-
-		fmt.Println("Processed:", string(processedBytes))
+	if err := services.RunAnalytics(ctx, cfg, logger); err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error("analytics service stopped", "error", err)
+		os.Exit(1)
 	}
 }

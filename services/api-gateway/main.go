@@ -2,157 +2,65 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
-	"strconv"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	_ "github.com/lib/pq"
-	"github.com/segmentio/kafka-go"
+	"github.com/apekshita/eventpulse/internal/config"
+	"github.com/apekshita/eventpulse/internal/database"
+	"github.com/apekshita/eventpulse/internal/handlers"
+	"github.com/apekshita/eventpulse/internal/kafka"
+	"github.com/apekshita/eventpulse/internal/logging"
 )
 
-type Event struct {
-	UserID    string  `json:"user_id"`
-	EventType string  `json:"event_type"`
-	Amount    float64 `json:"amount"`
-}
-
-type Alert struct {
-	ID        int    `json:"id"`
-	UserID    string `json:"user_id"`
-	RiskScore int    `json:"risk_score"`
-	Message   string `json:"message"`
-}
-
-var writer = &kafka.Writer{
-	Addr:     kafka.TCP("localhost:9092"),
-	Topic:    "events.raw",
-	Balancer: &kafka.LeastBytes{},
-}
-
-var db *sql.DB
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "EventPulse API Running")
-}
-
-func createEvent(w http.ResponseWriter, r *http.Request) {
-	var event Event
-
-	err := json.NewDecoder(r.Body).Decode(&event)
-	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	eventBytes, _ := json.Marshal(event)
-
-	err = writer.WriteMessages(
-		context.Background(),
-		kafka.Message{
-			Value: eventBytes,
-		},
-	)
-
-	if err != nil {
-		fmt.Println("Kafka Error:", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Println("Published Event:", string(eventBytes))
-
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Event Published"))
-}
-
-func getAlerts(w http.ResponseWriter, r *http.Request) {
-
-	rows, err := db.Query(
-		`SELECT id, user_id, risk_score, message
-		 FROM alerts
-		 ORDER BY id DESC`,
-	)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	defer rows.Close()
-
-	var alerts []Alert
-
-	for rows.Next() {
-
-		var alert Alert
-
-		err := rows.Scan(
-			&alert.ID,
-			&alert.UserID,
-			&alert.RiskScore,
-			&alert.Message,
-		)
-
-		if err != nil {
-			continue
-		}
-
-		alerts = append(alerts, alert)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(alerts)
-}
-
-func getAlertByID(w http.ResponseWriter, r *http.Request) {
-
-	idStr := r.URL.Query().Get("id")
-
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
-		return
-	}
-
-	var alert Alert
-
-	err = db.QueryRow(
-		`SELECT id,user_id,risk_score,message
-		 FROM alerts
-		 WHERE id=$1`,
-		id,
-	).Scan(
-		&alert.ID,
-		&alert.UserID,
-		&alert.RiskScore,
-		&alert.Message,
-	)
-
-	if err != nil {
-		http.Error(w, "Alert Not Found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(alert)
-}
-
 func main() {
-	db, _ = sql.Open(
-		"postgres",
-		"host=localhost port=5432 user=admin password=admin123 dbname=eventpulse sslmode=disable",
-	)
+	cfg := config.Load("api-gateway")
+	logger := logging.New(cfg.ServiceName, cfg.LogLevel)
 
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/events", createEvent)
-	http.HandleFunc("/alerts", getAlerts)
-	http.HandleFunc("/alert", getAlertByID)
-	fmt.Println("Server started on :8080")
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	err := http.ListenAndServe(":8080", nil)
+	db, err := database.OpenPostgres(ctx, cfg.DatabaseDSN)
 	if err != nil {
-		panic(err)
+		logger.Error("failed to connect to postgres", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	writer := kafka.NewWriter(cfg.KafkaBrokers, cfg.RawTopic)
+	defer writer.Close()
+
+	h := &handlers.GatewayHandler{
+		Logger: logger,
+		DB:     db,
+		Writer: writer,
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", h.Health)
+	mux.HandleFunc("/events", h.CreateEvent)
+	mux.HandleFunc("/alerts", h.GetAlerts)
+	mux.HandleFunc("/alert", h.GetAlertByID)
+
+	server := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	}()
+
+	logger.Info("api gateway started", "port", cfg.Port)
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Error("api gateway stopped", "error", err)
+		os.Exit(1)
 	}
 }

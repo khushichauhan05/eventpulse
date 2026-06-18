@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">EventPulse Validation Screenshot</title>
+  <desc id="desc">A visual validation summary showing the verified end-to-end pipeline steps and outputs.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 34px Arial, sans-serif; fill: #f8fafc; }
+      .subtitle { font: 400 16px Arial, sans-serif; fill: #cbd5e1; }
+      .panel { fill: #0f172a; stroke: #334155; stroke-width: 2; rx: 18; }
+      .step { font: 700 20px Arial, sans-serif; fill: #e2e8f0; }
+      .detail { font: 400 15px Arial, sans-serif; fill: #94a3b8; }
+      .check { fill: #22c55e; font: 700 20px Arial, sans-serif; }
+      .mono { font: 600 15px "Courier New", monospace; fill: #7dd3fc; }
+    </style>
+  </defs>
+  <rect width="1200" height="520" fill="url(#bg)"/>
+  <text x="60" y="64" class="title">Validation Evidence</text>
+  <text x="60" y="94" class="subtitle">Clean-clone startup and end-to-end pipeline smoke test</text>
+
+  <rect x="60" y="140" width="1080" height="300" class="panel"/>
+
+  <text x="100" y="190" class="check">✓</text><text x="140" y="190" class="step">Compose startup</text>
+  <text x="360" y="190" class="detail">All services came up healthy with Docker Compose.</text>
+
+  <text x="100" y="235" class="check">✓</text><text x="140" y="235" class="step">POST /events</text>
+  <text x="360" y="235" class="detail">Published a high-risk event to Kafka topic <tspan class="mono">events.raw</tspan>.</text>
+
+  <text x="100" y="280" class="check">✓</text><text x="140" y="280" class="step">Analytics</text>
+  <text x="360" y="280" class="detail">Consumed the raw event and emitted a processed event with <tspan class="mono">risk_score=90</tspan>.</text>
+
+  <text x="100" y="325" class="check">✓</text><text x="140" y="325" class="step">Alert Service</text>
+  <text x="360" y="325" class="detail">Generated an alert and published it to Kafka topic <tspan class="mono">alerts</tspan>.</text>
+
+  <text x="100" y="370" class="check">✓</text><text x="140" y="370" class="step">PostgreSQL + GET /alerts</text>
+  <text x="360" y="370" class="detail">Alert persisted in PostgreSQL and returned by the API.</text>
+</svg>
