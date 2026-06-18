@@ -1,0 +1,128 @@
+---
+# Pod Disruption Budgets (PDB)
+# Ensure minimum pod availability during voluntary disruptions (node drain, pod eviction, etc.)
+
+# API Gateway PDB
+# Ensures at least 1 pod stays running during maintenance
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: eventpulse
+  labels:
+    app: api-gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+
+---
+# Analytics Service PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analytics-service-pdb
+  namespace: eventpulse
+  labels:
+    app: analytics-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: analytics-service
+
+---
+# Alert Service PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alert-service-pdb
+  namespace: eventpulse
+  labels:
+    app: alert-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: alert-service
+
+---
+# PostgreSQL PDB
+# Must keep database running (can't tolerate any disruption)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-pdb
+  namespace: eventpulse
+  labels:
+    app: postgres
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: postgres
+
+---
+# Kafka PDB
+# Must keep broker running (can't lose message broker)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-pdb
+  namespace: eventpulse
+  labels:
+    app: kafka
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kafka
+
+---
+# Prometheus PDB
+# Must keep metrics collector running
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prometheus-pdb
+  namespace: eventpulse
+  labels:
+    app: prometheus
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: prometheus
+
+---
+# Grafana PDB
+# Must keep dashboard system running
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana-pdb
+  namespace: eventpulse
+  labels:
+    app: grafana
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: grafana
+
+---
+# NGINX Ingress PDB
+# At least 1 ingress controller must stay running
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nginx-ingress-pdb
+  namespace: ingress-nginx
+  labels:
+    app: ingress-nginx
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ingress-nginx
