@@ -132,16 +132,6 @@ Validation screenshot:
 
 `POST /events` -> `events.raw` -> Analytics Service -> `events.processed` -> Alert Service -> PostgreSQL -> `GET /alerts`
 
-## Validation Results
-
-### Event Processing Pipeline
-
-![Validation](https://chatgpt.com/c/docs/screenshots/validation.svg)
-
-### Architecture Diagram
-
-![Architecture](https://chatgpt.com/c/docs/screenshots/architecture.svg)
-
 ## Local Setup
 
 1. Install Docker Desktop and Go 1.26 or later.
