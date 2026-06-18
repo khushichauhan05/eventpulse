@@ -533,5 +533,52 @@ kubectl run -it --rm kafka-client --image=apache/kafka:latest --restart=Never -n
 See DEPLOYMENT_GUIDE.md sections:
 - "Verification: PostgreSQL is Running" (6 procedures)
 - "Verification: Kafka is Running" (7 procedures)
+- "Verification: All Services Running" (6 procedures)
 
-Next: Phase 3 — Application Services (API Gateway, Analytics, Alert Service)
+---
+
+## End-to-End Validation
+
+**VALIDATION.md** — Complete pipeline verification guide:
+
+### Pipeline Flow
+```
+POST /events → api-gateway:8080
+    ↓
+Kafka topic: events.raw
+    ↓
+analytics-service (Kafka consumer)
+    ↓
+Kafka topic: events.processed (with risk_score)
+    ↓
+alert-service (Kafka consumer)
+    ↓
+PostgreSQL alerts table (INSERT)
+    ↓
+GET /alerts → api-gateway:8080
+```
+
+### 8-Step Validation Checklist
+1. ✓ Verify all services healthy (pods, endpoints, health endpoints)
+2. ✓ Send transaction event (POST /events)
+3. ✓ Verify event in Kafka (events.raw topic)
+4. ✓ Monitor Analytics Service processing
+5. ✓ Verify processed event in Kafka (events.processed with risk_score)
+6. ✓ Monitor Alert Service generation
+7. ✓ Verify alert in PostgreSQL (query alerts table)
+8. ✓ Retrieve alerts via API (GET /alerts)
+
+### Commands Reference
+- `kubectl logs deployment/<name> -f` — Stream logs
+- `kubectl exec -it pod/<name> -- <cmd>` — Execute in pod
+- `kubectl port-forward svc/<name> <port>:<port>` — Local access
+- `kubectl run --rm <pod> --image=<image> -- <cmd>` — Debug pods
+
+### Test Scenarios
+- High-risk events (>$10k → alert generated)
+- Low-risk events (<$10k → no alert)
+- Duplicate event handling (idempotency via event_id)
+- Consumer group lag inspection
+- Prometheus metrics verification
+
+Next: Phase 4 — Monitoring (Prometheus, Grafana dashboards)
