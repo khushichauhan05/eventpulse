@@ -1,0 +1,122 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: eventpulse
+  labels:
+    app: analytics-service
+    tier: services
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        tier: services
+    spec:
+      containers:
+      - name: analytics-service
+        image: eventpulse-analytics-service:latest
+        imagePullPolicy: Never  # Change to IfNotPresent for production with registry
+        ports:
+        - containerPort: 8080
+          name: app
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        - containerPort: 8081
+          name: metrics
+          protocol: TCP
+        env:
+        - name: SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: ANALYTICS_SERVICE_NAME
+        - name: HEALTH_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: ANALYTICS_HEALTH_PORT
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_BROKERS
+        - name: KAFKA_TOPIC_RAW
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_RAW
+        - name: KAFKA_TOPIC_PROCESSED
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_PROCESSED
+        - name: KAFKA_TOPIC_DLQ
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_TOPIC_DLQ
+        - name: KAFKA_ANALYTICS_GROUP
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: KAFKA_ANALYTICS_GROUP
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: eventpulse-config
+              key: LOG_LEVEL
+        - name: DATABASE_DSN
+          valueFrom:
+            secretKeyRef:
+              name: eventpulse-secrets
+              key: DATABASE_DSN
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: eventpulse
+  labels:
+    app: analytics-service
+    tier: services
+spec:
+  selector:
+    app: analytics-service
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: health
