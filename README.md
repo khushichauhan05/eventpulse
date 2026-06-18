@@ -154,12 +154,54 @@ Alerts stored in PostgreSQL and retrieved through the REST API.
 
 `POST /events` -> `events.raw` -> Analytics Service -> `events.processed` -> Alert Service -> PostgreSQL -> `GET /alerts`
 
-## Local Setup
+## Deployment Options
+
+### Docker Compose (Development)
 
 1. Install Docker Desktop and Go 1.26 or later.
 2. Run `go build ./...` to verify the repository compiles.
 3. Run `docker compose up -d --build` to start Kafka, PostgreSQL, and the three services.
 4. Check the health endpoints at `http://localhost:8080/health`, `http://localhost:8081/health`, and `http://localhost:8082/health`.
+
+### Kubernetes (Production)
+
+EventPulse v2.0.0 includes production-grade Kubernetes deployment manifests for cloud-native deployment.
+
+**Features**:
+- PostgreSQL with persistent storage (20Gi PVC)
+- Apache Kafka in KRaft mode with persistence (50Gi PVC)
+- Three microservices with 2-10 replica auto-scaling
+- NGINX Ingress Controller for external access
+- Prometheus & Grafana for monitoring
+- Security hardening: non-root execution, read-only filesystems, pod disruption budgets
+- Pod anti-affinity for high availability
+- Horizontal Pod Autoscaling (HPA) based on CPU utilization
+
+**Quick Start**:
+```bash
+# Apply all Kubernetes manifests
+kubectl apply -f k8s/
+
+# Verify deployment
+kubectl get pods -n eventpulse
+kubectl get svc -n eventpulse
+kubectl get ingress -n eventpulse
+
+# Port-forward to access services (no Ingress IP in local clusters)
+kubectl port-forward -n eventpulse svc/api-gateway 8080:8080
+kubectl port-forward -n eventpulse svc/prometheus 9090:9090
+kubectl port-forward -n eventpulse svc/grafana 3000:3000
+```
+
+**Documentation**:
+- [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) - Step-by-step Kubernetes deployment
+- [VALIDATION.md](VALIDATION.md) - End-to-end pipeline validation procedures
+- [KUBERNETES_STATUS.md](KUBERNETES_STATUS.md) - Complete project status
+- [SECURITY_REVIEW.md](SECURITY_REVIEW.md) - Security hardening details
+- [SECURITY_VALIDATION.md](SECURITY_VALIDATION.md) - Security validation checklist
+- [INGRESS_GUIDE.md](INGRESS_GUIDE.md) - NGINX Ingress setup & troubleshooting
+- [AUTOSCALING_GUIDE.md](AUTOSCALING_GUIDE.md) - HPA load testing & verification
+- [MONITORING_GUIDE.md](MONITORING_GUIDE.md) - Prometheus & Grafana setup
 
 ## Kafka Topics
 
@@ -281,15 +323,27 @@ curl "http://localhost:8080/alert?id=1"
 - [Project Status](PROJECT_STATUS.md)
 - [Release Notes](RELEASE_NOTES.md)
 
+## Completed in v2.0.0 (Kubernetes Release)
+
+✅ Production-grade Kubernetes deployment  
+✅ Dead-letter topic (events.dlq) for malformed Kafka messages  
+✅ Prometheus metrics collection and storage  
+✅ Grafana dashboards (4 pre-configured)  
+✅ Horizontal Pod Autoscaling (2-10 replicas)  
+✅ Security hardening (non-root, read-only FS, PDBs)  
+✅ Pod anti-affinity for high availability  
+✅ NGINX Ingress Controller  
+✅ Comprehensive deployment documentation (8 guides)
+
 ## Future Enhancements
 
 High-impact follow-ups:
 
-1. Add a dead-letter topic for malformed Kafka messages.
-2. Add Prometheus metrics and Grafana dashboards.
-3. Add integration tests with Testcontainers.
-4. Add idempotency keys for alert writes.
-5. Add an outbox pattern for atomic Kafka and Postgres consistency.
+1. Add integration tests with Testcontainers.
+2. Add idempotency keys for alert writes.
+3. Add an outbox pattern for atomic Kafka and Postgres consistency.
+4. Implement NetworkPolicies (CNI-dependent).
+5. Encrypted secrets management (Sealed Secrets / Vault).
 
 ## MIT License
 
