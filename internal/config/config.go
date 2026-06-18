@@ -14,6 +14,7 @@ type Config struct {
 	RawTopic       string
 	ProcessedTopic string
 	AlertsTopic    string
+	DLQTopic       string
 	AnalyticsGroup string
 	AlertGroup     string
 	LogLevel       string
@@ -29,6 +30,7 @@ func Load(serviceName string) Config {
 		RawTopic:       getEnv("KAFKA_TOPIC_RAW", "events.raw"),
 		ProcessedTopic: getEnv("KAFKA_TOPIC_PROCESSED", "events.processed"),
 		AlertsTopic:    getEnv("KAFKA_TOPIC_ALERTS", "alerts"),
+		DLQTopic:       getEnv("KAFKA_TOPIC_DLQ", "events.dlq"),
 		AnalyticsGroup: getEnv("KAFKA_ANALYTICS_GROUP", "analytics-group"),
 		AlertGroup:     getEnv("KAFKA_ALERT_GROUP", "alert-group"),
 		LogLevel:       getEnv("LOG_LEVEL", "INFO"),

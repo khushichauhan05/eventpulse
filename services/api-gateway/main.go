@@ -9,11 +9,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/apekshita/eventpulse/internal/config"
 	"github.com/apekshita/eventpulse/internal/database"
 	"github.com/apekshita/eventpulse/internal/handlers"
 	"github.com/apekshita/eventpulse/internal/kafka"
 	"github.com/apekshita/eventpulse/internal/logging"
+	_ "github.com/apekshita/eventpulse/internal/metrics"
 )
 
 func main() {
@@ -44,6 +47,7 @@ func main() {
 	mux.HandleFunc("/events", h.CreateEvent)
 	mux.HandleFunc("/alerts", h.GetAlerts)
 	mux.HandleFunc("/alert", h.GetAlertByID)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,

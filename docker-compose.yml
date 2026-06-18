@@ -63,6 +63,7 @@ services:
       KAFKA_TOPIC_RAW: ${KAFKA_TOPIC_RAW:-events.raw}
       KAFKA_TOPIC_PROCESSED: ${KAFKA_TOPIC_PROCESSED:-events.processed}
       KAFKA_TOPIC_ALERTS: ${KAFKA_TOPIC_ALERTS:-alerts}
+      KAFKA_TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-events.dlq}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
     ports:
@@ -96,6 +97,7 @@ services:
       KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
       KAFKA_TOPIC_RAW: ${KAFKA_TOPIC_RAW:-events.raw}
       KAFKA_TOPIC_PROCESSED: ${KAFKA_TOPIC_PROCESSED:-events.processed}
+      KAFKA_TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-events.dlq}
       KAFKA_ANALYTICS_GROUP: ${KAFKA_ANALYTICS_GROUP:-analytics-group}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
@@ -125,6 +127,7 @@ services:
       KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
       KAFKA_TOPIC_PROCESSED: ${KAFKA_TOPIC_PROCESSED:-events.processed}
       KAFKA_TOPIC_ALERTS: ${KAFKA_TOPIC_ALERTS:-alerts}
+      KAFKA_TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-events.dlq}
       KAFKA_ALERT_GROUP: ${KAFKA_ALERT_GROUP:-alert-group}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
@@ -141,5 +144,49 @@ services:
       retries: 10
       start_period: 10s
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    ports:
+      - "9090:9090"
+
+    depends_on:
+      - api-gateway
+      - analytics-service
+      - alert-service
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

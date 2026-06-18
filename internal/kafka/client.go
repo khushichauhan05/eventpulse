@@ -9,6 +9,13 @@ import (
 	"github.com/apekshita/eventpulse/internal/retry"
 )
 
+// MessageWriter is the interface satisfied by *kafka.Writer.
+// It allows handlers and services to be tested with a mock.
+type MessageWriter interface {
+	WriteMessages(ctx context.Context, msgs ...kafka.Message) error
+	Close() error
+}
+
 func NewReader(brokers []string, topic, groupID string) *kafka.Reader {
 	return kafka.NewReader(kafka.ReaderConfig{
 		Brokers:         brokers,
@@ -34,7 +41,7 @@ func NewWriter(brokers []string, topic string) *kafka.Writer {
 	}
 }
 
-func WriteWithRetry(ctx context.Context, writer *kafka.Writer, value []byte) error {
+func WriteWithRetry(ctx context.Context, writer MessageWriter, value []byte) error {
 	return retry.Do(ctx, 5, 250*time.Millisecond, func() error {
 		return writer.WriteMessages(ctx, kafka.Message{Value: value})
 	})

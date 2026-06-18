@@ -1,0 +1,106 @@
+{
+  "title": "EventPulse — Real-Time Fraud Detection",
+  "uid": "eventpulse-main",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Events Published (rate/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(eventpulse_events_published_total[1m])",
+          "legendFormat": "{{service}} → {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Events Consumed (rate/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(eventpulse_events_consumed_total[1m])",
+          "legendFormat": "{{service}} ← {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Alerts Generated (rate/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(eventpulse_alerts_generated_total[1m])",
+          "legendFormat": "fraud alerts"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "HTTP Requests (rate/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(eventpulse_http_requests_total[1m])",
+          "legendFormat": "{{method}} {{path}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Processing Errors (rate/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(eventpulse_processing_errors_total[1m])",
+          "legendFormat": "{{service}} / {{stage}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Dead-Letter Queue (total)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(eventpulse_dlq_messages_total)",
+          "legendFormat": "DLQ messages"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Total Alerts Generated",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "eventpulse_alerts_generated_total",
+          "legendFormat": "alerts"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Risk Score Distribution",
+      "type": "histogram",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(eventpulse_risk_score_distribution_bucket[1m])",
+          "legendFormat": "le={{le}}"
+        }
+      ]
+    }
+  ]
+}
