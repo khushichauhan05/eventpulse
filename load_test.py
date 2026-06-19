@@ -257,8 +257,8 @@ class LoadTester:
             transaction = self.generator.generate_transaction(is_fraud=is_fraud)
             success, elapsed, result = self.send_transaction(transaction)
 
-            status = "✅" if success else "❌"
-            fraud_indicator = "🔴" if transaction.get("is_fraud") else " "
+            status = "" if success else ""
+            fraud_indicator = "" if transaction.get("is_fraud") else " "
 
             print(f"[T{thread_id}] {status} {fraud_indicator} "
                   f"Amount: ${transaction.get('amount', 0):>8.2f} "
@@ -271,7 +271,7 @@ class LoadTester:
         """Execute load test"""
 
         print("\n" + "="*90)
-        print("🚀 EventPulse Load Test Started")
+        print(" EventPulse Load Test Started")
         print("="*90)
         print(f"Endpoint: {self.endpoint}")
         print(f"Target TPS: {self.tps}")
@@ -293,7 +293,7 @@ class LoadTester:
                 try:
                     future.result()
                 except Exception as e:
-                    print(f"❌ Thread error: {e}")
+                    print(f" Thread error: {e}")
 
         elapsed_time = time.time() - self.start_time
         self.print_results(elapsed_time)
@@ -302,17 +302,17 @@ class LoadTester:
         """Print final statistics"""
 
         print("\n" + "="*90)
-        print("📊 Load Test Results")
+        print(" Load Test Results")
         print("="*90)
 
-        print(f"\n⏱️  Execution Time: {elapsed_time:.2f}s")
-        print(f"📤 Total Transactions Sent: {self.total_success + self.total_failed}")
-        print(f"✅ Successful: {self.total_success}")
-        print(f"❌ Failed: {self.total_failed}")
-        print(f"🔴 Fraud Detected: {self.fraud_count}")
+        print(f"\n⏱  Execution Time: {elapsed_time:.2f}s")
+        print(f" Total Transactions Sent: {self.total_success + self.total_failed}")
+        print(f" Successful: {self.total_success}")
+        print(f" Failed: {self.total_failed}")
+        print(f" Fraud Detected: {self.fraud_count}")
 
         if self.response_times:
-            print(f"\n⚡ Response Time Statistics:")
+            print(f"\n Response Time Statistics:")
             response_times_sorted = sorted(self.response_times)
             print(f"   Min: {min(response_times_sorted):.2f}ms")
             print(f"   Max: {max(response_times_sorted):.2f}ms")
@@ -322,10 +322,10 @@ class LoadTester:
             print(f"   P99: {response_times_sorted[int(len(response_times_sorted)*0.99)]:.2f}ms")
 
         actual_tps = self.total_success / elapsed_time if elapsed_time > 0 else 0
-        print(f"\n🎯 Actual TPS: {actual_tps:.2f} (target: {self.tps})")
+        print(f"\n Actual TPS: {actual_tps:.2f} (target: {self.tps})")
 
         if self.errors:
-            print(f"\n⚠️  Errors ({len(self.errors)}):")
+            print(f"\n  Errors ({len(self.errors)}):")
             for error in self.errors[:5]:
                 print(f"   - {error}")
             if len(self.errors) > 5:
@@ -357,7 +357,7 @@ class AlertMonitor:
                     self.last_alert_count = len(alerts)
                     latest_alert = alerts[-1] if alerts else None
 
-                    print(f"\n🚨 NEW FRAUD ALERT! ({len(alerts)} total)")
+                    print(f"\n NEW FRAUD ALERT! ({len(alerts)} total)")
                     if latest_alert:
                         print(f"   Event: {latest_alert.get('event_id')}")
                         print(f"   User: {latest_alert.get('user_id')}")
@@ -391,9 +391,9 @@ def main():
 
     try:
         response = requests.get("http://localhost:8080/health", timeout=5)
-        print("✅ API Gateway is running\n")
+        print(" API Gateway is running\n")
     except:
-        print("❌ ERROR: Cannot connect to API Gateway at http://localhost:8080")
+        print(" ERROR: Cannot connect to API Gateway at http://localhost:8080")
         print("   Make sure EventPulse is running:")
         print("   $ kubectl port-forward -n eventpulse svc/api-gateway 8080:8080")
         sys.exit(1)
@@ -420,9 +420,9 @@ def main():
     try:
         tester.run()
     except KeyboardInterrupt:
-        print("\n⚠️  Load test interrupted by user")
+        print("\n  Load test interrupted by user")
 
-    print("\n📊 Final Alert Summary:")
+    print("\n Final Alert Summary:")
     final_alerts = monitor.check_alerts()
     print(f"Total Fraud Alerts Generated: {final_alerts}")
 

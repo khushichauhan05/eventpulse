@@ -524,10 +524,10 @@ Edit nginx-ingress-deployment.yaml ConfigMap:
 data:
   # Increase worker connections for high traffic
   worker-connections: "4096"
-  
+
   # Disable access logs if high volume
   access-log: "off"
-  
+
   # Enable compression
   gzip: "true"
   gzip-types: "text/plain text/css application/json application/javascript"
@@ -540,7 +540,7 @@ If your backend expects different paths, add to eventpulse-ingress.yaml:
 ```yaml
 annotations:
   nginx.ingress.kubernetes.io/rewrite-target: /api/$2
-  
+
 paths:
 - path: /api(/|$)(.*)
   pathType: ImplementationSpecific
@@ -632,10 +632,10 @@ kubectl delete -f k8s/ingress/nginx-ingress-deployment.yaml
 
 ## Summary
 
-✅ NGINX Ingress Controller installed and configured  
-✅ EventPulse Ingress routes all paths to API Gateway  
-✅ CORS, rate limiting, and proxy settings enabled  
-✅ Single entrypoint for all API endpoints  
-✅ Ready for testing and production deployment  
+ NGINX Ingress Controller installed and configured  
+ EventPulse Ingress routes all paths to API Gateway  
+ CORS, rate limiting, and proxy settings enabled  
+ Single entrypoint for all API endpoints  
+ Ready for testing and production deployment  
 
 **Next**: Phase 5 — Production Hardening & Monitoring

@@ -27,7 +27,7 @@ if __name__ == "__main__":
     tps = int(sys.argv[2])
     fraud_pct = int(sys.argv[3])
 
-    print(f"\n🎬 Recording: {duration}s at {tps} TPS with {fraud_pct}% fraud\n")
+    print(f"\n Recording: {duration}s at {tps} TPS with {fraud_pct}% fraud\n")
 
     tester = LoadTester(
         endpoint="http://localhost:8080/events",

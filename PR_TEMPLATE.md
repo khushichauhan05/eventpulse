@@ -14,40 +14,40 @@ EventPulse v2.0.0 introduces production-grade Kubernetes support with complete i
 
 ## What's New in v2.0.0
 
-### Phase 1: PostgreSQL Deployment ✅
+### Phase 1: PostgreSQL Deployment 
 - PersistentVolumeClaim (20Gi)
 - Automated schema initialization
 - Health probes (liveness & readiness)
 - ClusterIP Service for internal DNS discovery
 
-### Phase 2: Kafka KRaft Mode ✅
+### Phase 2: Kafka KRaft Mode 
 - KRaft configuration (no ZooKeeper)
 - PersistentVolumeClaim (50Gi)
 - Dual-port service (9092 client, 9093 controller)
 - Auto topic creation
 - Health checks (broker API, topic list)
 
-### Phase 3: Application Services ✅
+### Phase 3: Application Services 
 - **API Gateway**: Transaction event ingestion, alert retrieval
 - **Analytics Service**: Event risk scoring with Kafka consumer groups
 - **Alert Service**: Fraud alert generation with database integration
 - All services: 2 replicas, rolling updates, health probes
 
-### Phase 4: NGINX Ingress Controller ✅
+### Phase 4: NGINX Ingress Controller 
 - Single HTTP/HTTPS entrypoint
 - CORS and rate limiting configured
 - 5 API paths exposed: /events, /alerts, /alert, /health, /metrics
 - LoadBalancer service for cloud deployments
 - RBAC with least-privilege permissions
 
-### Phase 5: Horizontal Pod Autoscaling ✅
+### Phase 5: Horizontal Pod Autoscaling 
 - 2-10 replica scaling per service
 - CPU utilization target (70%)
 - Responsive scale-up (1 pod/30s)
 - Conservative scale-down (1 pod/60s after 5-min stable)
 - Memory scaling (secondary metric)
 
-### Phase 6: Prometheus & Grafana ✅
+### Phase 6: Prometheus & Grafana 
 - Metrics collection with 7-day retention (10Gi PVC)
 - 4 production dashboards:
   - EventPulse Overview (event rates, alerts, pipeline depth)
@@ -57,7 +57,7 @@ EventPulse v2.0.0 introduces production-grade Kubernetes support with complete i
 - Kubernetes service discovery
 - Pre-configured Prometheus datasource in Grafana
 
-### Phase 7: Security Hardening ✅
+### Phase 7: Security Hardening 
 - **Security Contexts**: Non-root execution (uid 1000+) on all 8 services
 - **Privilege Escalation Prevention**: `allowPrivilegeEscalation: false` on all services
 - **Capability Restrictions**: `capabilities.drop: [ALL]` (NET_BIND_SERVICE for NGINX only)
@@ -160,46 +160,46 @@ EventPulse v2.0.0 introduces production-grade Kubernetes support with complete i
 
 ## Validation Results
 
-### Manifest Validation ✅
+### Manifest Validation 
 
 **Status**: Manifest-based validation only (Kubernetes cluster not available for runtime testing)
 
 All manifests validated for:
-- ✅ YAML syntax correctness
-- ✅ Kubernetes API schema compliance
-- ✅ Security context configuration
-- ✅ Resource request/limit configuration
-- ✅ Health probe configuration
-- ✅ Volume and mount configuration
-- ✅ Service and Ingress routing
-- ✅ RBAC permissions
+-  YAML syntax correctness
+-  Kubernetes API schema compliance
+-  Security context configuration
+-  Resource request/limit configuration
+-  Health probe configuration
+-  Volume and mount configuration
+-  Service and Ingress routing
+-  RBAC permissions
 
-### Security Validation ✅
+### Security Validation 
 
 All 8 services verified to have:
-- ✅ Non-root execution (runAsUser set)
-- ✅ Privilege escalation prevention
-- ✅ Capability restrictions (drop ALL)
-- ✅ Resource requests and limits
+-  Non-root execution (runAsUser set)
+-  Privilege escalation prevention
+-  Capability restrictions (drop ALL)
+-  Resource requests and limits
 
 Multi-replica services verified to have:
-- ✅ Pod anti-affinity rules
-- ✅ Pod Disruption Budgets
-- ✅ Rolling update strategy (maxUnavailable: 0)
+-  Pod anti-affinity rules
+-  Pod Disruption Budgets
+-  Rolling update strategy (maxUnavailable: 0)
 
 All services verified to have:
-- ✅ Health probes (startup, readiness, liveness)
-- ✅ Graceful shutdown (terminationGracePeriodSeconds)
-- ✅ Proper volume mounts
-- ✅ ConfigMap and Secret integration
+-  Health probes (startup, readiness, liveness)
+-  Graceful shutdown (terminationGracePeriodSeconds)
+-  Proper volume mounts
+-  ConfigMap and Secret integration
 
-### Documentation Validation ✅
+### Documentation Validation 
 
-- ✅ 8 comprehensive deployment guides created
-- ✅ Step-by-step instructions with kubectl commands
-- ✅ End-to-end pipeline validation procedures
-- ✅ Security feature verification checklist
-- ✅ Troubleshooting procedures for all components
+-  8 comprehensive deployment guides created
+-  Step-by-step instructions with kubectl commands
+-  End-to-end pipeline validation procedures
+-  Security feature verification checklist
+-  Troubleshooting procedures for all components
 
 ## Deployment Instructions
 
@@ -240,7 +240,7 @@ curl http://localhost:8080/alerts
 
 ## Production Readiness
 
-### ✅ Ready for Production
+###  Ready for Production
 - All Kubernetes manifests created and validated
 - Security hardening implemented (Phase 7)
 - Documentation complete

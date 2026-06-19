@@ -414,13 +414,13 @@ When all verifications pass, PostgreSQL is ready for the next phase: deploying t
 
 | Component | File | Status |
 |-----------|------|--------|
-| Namespace | `k8s/namespace.yaml` | ✅ Applied |
-| ConfigMap | `k8s/configmap.yaml` | ✅ Applied |
-| Secret | (created via kubectl) | ✅ Created |
-| PVC | `k8s/postgres/postgres-pvc.yaml` | ✅ Applied |
-| Init ConfigMap | `k8s/postgres/postgres-init-cm.yaml` | ✅ Applied |
-| Deployment | `k8s/postgres/postgres-deployment.yaml` | ✅ Applied |
-| Service | `k8s/postgres/postgres-service.yaml` | ✅ Applied |
+| Namespace | `k8s/namespace.yaml` |  Applied |
+| ConfigMap | `k8s/configmap.yaml` |  Applied |
+| Secret | (created via kubectl) |  Created |
+| PVC | `k8s/postgres/postgres-pvc.yaml` |  Applied |
+| Init ConfigMap | `k8s/postgres/postgres-init-cm.yaml` |  Applied |
+| Deployment | `k8s/postgres/postgres-deployment.yaml` |  Applied |
+| Service | `k8s/postgres/postgres-service.yaml` |  Applied |
 
 ---
 
@@ -1391,11 +1391,11 @@ kubectl apply -f k8s/ingress/eventpulse-ingress.yaml
 
 ## Summary
 
-✅ NGINX Ingress Controller installed and running  
-✅ EventPulse Ingress routes all paths to API Gateway  
-✅ Single entrypoint on port 80 (or 443 with TLS)  
-✅ CORS and rate limiting configured  
-✅ Ready for production traffic  
+ NGINX Ingress Controller installed and running  
+ EventPulse Ingress routes all paths to API Gateway  
+ Single entrypoint on port 80 (or 443 with TLS)  
+ CORS and rate limiting configured  
+ Ready for production traffic  
 
 See **INGRESS_GUIDE.md** for detailed troubleshooting and advanced configuration.
 
@@ -1698,11 +1698,11 @@ scaleDown:
 
 ## Summary
 
-✅ HPAs deployed for all 3 services (2-10 replicas)  
-✅ Scaling based on CPU utilization (70% threshold)  
-✅ Load testing procedures documented  
-✅ Scaling verification step-by-step  
-✅ Troubleshooting guide included  
+ HPAs deployed for all 3 services (2-10 replicas)  
+ Scaling based on CPU utilization (70% threshold)  
+ Load testing procedures documented  
+ Scaling verification step-by-step  
+ Troubleshooting guide included  
 
 See **AUTOSCALING_GUIDE.md** for comprehensive load testing and advanced tuning.
 

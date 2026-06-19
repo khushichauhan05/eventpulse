@@ -1,7 +1,7 @@
 # EventPulse Kubernetes Security Validation Checklist
 
 **Date**: 2026-06-18  
-**Status**: All Phase 7 security hardening features implemented ✅  
+**Status**: All Phase 7 security hardening features implemented   
 **Scope**: All 8 microservices and infrastructure components
 
 ---
@@ -27,14 +27,14 @@
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 999` |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ❌ NOT IMPLEMENTED | Database needs writable /var/lib/postgresql |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 999` |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  NOT IMPLEMENTED | Database needs writable /var/lib/postgresql |
 | Pod Anti-Affinity | ⏳ N/A | Single replica, not needed |
-| Termination Grace Period | ✅ IMPLEMENTED | `30s` |
+| Termination Grace Period |  IMPLEMENTED | `30s` |
 
-**Security Posture**: ⚠️ HARDENED (Read-only FS not possible, data needs writable storage)
+**Security Posture**:  HARDENED (Read-only FS not possible, data needs writable storage)
 
 ---
 
@@ -44,12 +44,12 @@
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ❌ NOT IMPLEMENTED | Kafka needs /tmp and /var/lib/kafka/data |
-| Pod Anti-Affinity | ✅ IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
-| Termination Grace Period | ✅ IMPLEMENTED | `60s` |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  NOT IMPLEMENTED | Kafka needs /tmp and /var/lib/kafka/data |
+| Pod Anti-Affinity |  IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
+| Termination Grace Period |  IMPLEMENTED | `60s` |
 
 **Verification**:
 ```bash
@@ -62,7 +62,7 @@ kubectl exec -n eventpulse kafka-xxxxx -- cat /proc/1/status | grep Cap
 # Expected: CapEff: 0000000000000000 (no capabilities)
 ```
 
-**Security Posture**: ⚠️ HARDENED (Read-only FS not possible for message broker)
+**Security Posture**:  HARDENED (Read-only FS not possible for message broker)
 
 ---
 
@@ -72,14 +72,14 @@ kubectl exec -n eventpulse kafka-xxxxx -- cat /proc/1/status | grep Cap
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ✅ IMPLEMENTED | `true` (Go binary statically linked) |
-| Pod Anti-Affinity | ✅ IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
-| Termination Grace Period | ✅ IMPLEMENTED | `60s` |
-| Rolling Update | ✅ IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
-| Health Probes | ✅ IMPLEMENTED | Startup, readiness, liveness |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  IMPLEMENTED | `true` (Go binary statically linked) |
+| Pod Anti-Affinity |  IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
+| Termination Grace Period |  IMPLEMENTED | `60s` |
+| Rolling Update |  IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
+| Health Probes |  IMPLEMENTED | Startup, readiness, liveness |
 
 **Verification**:
 ```bash
@@ -96,7 +96,7 @@ kubectl get pods -n eventpulse -o wide -l app=api-gateway
 # Expected: Pods on different nodes
 ```
 
-**Security Posture**: ✅ FULLY HARDENED (Read-only FS + non-root + no capabilities)
+**Security Posture**:  FULLY HARDENED (Read-only FS + non-root + no capabilities)
 
 ---
 
@@ -106,14 +106,14 @@ kubectl get pods -n eventpulse -o wide -l app=api-gateway
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ✅ IMPLEMENTED | `true` (Go binary statically linked) |
-| Pod Anti-Affinity | ✅ IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
-| Termination Grace Period | ✅ IMPLEMENTED | `60s` |
-| Rolling Update | ✅ IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
-| Health Probes | ✅ IMPLEMENTED | Startup, readiness, liveness |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  IMPLEMENTED | `true` (Go binary statically linked) |
+| Pod Anti-Affinity |  IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
+| Termination Grace Period |  IMPLEMENTED | `60s` |
+| Rolling Update |  IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
+| Health Probes |  IMPLEMENTED | Startup, readiness, liveness |
 
 **Verification**:
 ```bash
@@ -130,7 +130,7 @@ kubectl get pods -n eventpulse -o wide -l app=analytics-service
 # Expected: Pods on different nodes
 ```
 
-**Security Posture**: ✅ FULLY HARDENED
+**Security Posture**:  FULLY HARDENED
 
 ---
 
@@ -140,14 +140,14 @@ kubectl get pods -n eventpulse -o wide -l app=analytics-service
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ✅ IMPLEMENTED | `true` (Go binary statically linked) |
-| Pod Anti-Affinity | ✅ IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
-| Termination Grace Period | ✅ IMPLEMENTED | `60s` |
-| Rolling Update | ✅ IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
-| Health Probes | ✅ IMPLEMENTED | Startup, readiness, liveness |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 1000` |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  IMPLEMENTED | `true` (Go binary statically linked) |
+| Pod Anti-Affinity |  IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
+| Termination Grace Period |  IMPLEMENTED | `60s` |
+| Rolling Update |  IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
+| Health Probes |  IMPLEMENTED | Startup, readiness, liveness |
 
 **Verification**:
 ```bash
@@ -164,7 +164,7 @@ kubectl get pods -n eventpulse -l app=alert-service -o wide
 # Expected: Pods distributed across nodes
 ```
 
-**Security Posture**: ✅ FULLY HARDENED
+**Security Posture**:  FULLY HARDENED
 
 ---
 
@@ -174,13 +174,13 @@ kubectl get pods -n eventpulse -l app=alert-service -o wide
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 65534` (prometheus user) |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ❌ NOT IMPLEMENTED | Prometheus needs /prometheus for TSDB |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 65534` (prometheus user) |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  NOT IMPLEMENTED | Prometheus needs /prometheus for TSDB |
 | Pod Anti-Affinity | ⏳ N/A | Single replica, Recreate strategy |
-| Termination Grace Period | ✅ IMPLEMENTED | `30s` |
-| RBAC | ✅ IMPLEMENTED | ServiceAccount, ClusterRole, ClusterRoleBinding |
+| Termination Grace Period |  IMPLEMENTED | `30s` |
+| RBAC |  IMPLEMENTED | ServiceAccount, ClusterRole, ClusterRoleBinding |
 
 **Verification**:
 ```bash
@@ -201,7 +201,7 @@ kubectl auth can-i create pods --as=system:serviceaccount:eventpulse:prometheus 
 # Expected: no (least privilege)
 ```
 
-**Security Posture**: ⚠️ HARDENED (Read-only FS not possible for metrics storage)
+**Security Posture**:  HARDENED (Read-only FS not possible for metrics storage)
 
 ---
 
@@ -211,12 +211,12 @@ kubectl auth can-i create pods --as=system:serviceaccount:eventpulse:prometheus 
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 472` (grafana user) |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` |
-| readOnlyRootFilesystem | ❌ NOT IMPLEMENTED | Grafana needs writable /var/lib/grafana |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 472` (grafana user) |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` |
+| readOnlyRootFilesystem |  NOT IMPLEMENTED | Grafana needs writable /var/lib/grafana |
 | Pod Anti-Affinity | ⏳ N/A | Single replica |
-| Termination Grace Period | ✅ IMPLEMENTED | `30s` |
+| Termination Grace Period |  IMPLEMENTED | `30s` |
 
 **Verification**:
 ```bash
@@ -235,7 +235,7 @@ kubectl exec -n eventpulse grafana-xxxxx -- ls /var/lib/grafana/dashboards
 # Expected: Dashboard files present
 ```
 
-**Security Posture**: ⚠️ HARDENED (Read-only FS not possible for dashboard storage)
+**Security Posture**:  HARDENED (Read-only FS not possible for dashboard storage)
 
 ---
 
@@ -245,16 +245,16 @@ kubectl exec -n eventpulse grafana-xxxxx -- ls /var/lib/grafana/dashboards
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Security Context | ✅ IMPLEMENTED | `runAsNonRoot: true, runAsUser: 101` (nginx user) |
-| allowPrivilegeEscalation | ✅ IMPLEMENTED | `false` |
-| capabilities.add | ✅ IMPLEMENTED | `[NET_BIND_SERVICE]` (required for port binding) |
-| capabilities.drop | ✅ IMPLEMENTED | `[ALL]` (except NET_BIND_SERVICE) |
-| readOnlyRootFilesystem | ❌ NOT IMPLEMENTED | NGINX needs /var/cache/nginx, /var/run |
-| Pod Anti-Affinity | ✅ IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
-| Termination Grace Period | ✅ IMPLEMENTED | `60s` |
-| Rolling Update | ✅ IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
-| Health Probes | ✅ IMPLEMENTED | Liveness and readiness on port 10254 |
-| RBAC | ✅ IMPLEMENTED | ServiceAccount, ClusterRole, ClusterRoleBinding |
+| Security Context |  IMPLEMENTED | `runAsNonRoot: true, runAsUser: 101` (nginx user) |
+| allowPrivilegeEscalation |  IMPLEMENTED | `false` |
+| capabilities.add |  IMPLEMENTED | `[NET_BIND_SERVICE]` (required for port binding) |
+| capabilities.drop |  IMPLEMENTED | `[ALL]` (except NET_BIND_SERVICE) |
+| readOnlyRootFilesystem |  NOT IMPLEMENTED | NGINX needs /var/cache/nginx, /var/run |
+| Pod Anti-Affinity |  IMPLEMENTED | `preferredDuringSchedulingIgnoredDuringExecution, topologyKey: hostname` |
+| Termination Grace Period |  IMPLEMENTED | `60s` |
+| Rolling Update |  IMPLEMENTED | `maxSurge: 1, maxUnavailable: 0` |
+| Health Probes |  IMPLEMENTED | Liveness and readiness on port 10254 |
+| RBAC |  IMPLEMENTED | ServiceAccount, ClusterRole, ClusterRoleBinding |
 
 **Verification**:
 ```bash
@@ -280,7 +280,7 @@ curl http://localhost/health
 # Expected: 200 OK or 404 (not 503)
 ```
 
-**Security Posture**: ✅ HARDENED (NET_BIND_SERVICE needed for port binding)
+**Security Posture**:  HARDENED (NET_BIND_SERVICE needed for port binding)
 
 ---
 
@@ -290,14 +290,14 @@ curl http://localhost/health
 
 | Resource | minAvailable | Purpose | Status |
 |----------|--------------|---------|--------|
-| api-gateway-pdb | 1 | Keep ≥1 API Gateway pod during maintenance | ✅ |
-| analytics-service-pdb | 1 | Keep ≥1 Analytics pod during maintenance | ✅ |
-| alert-service-pdb | 1 | Keep ≥1 Alert Service pod during maintenance | ✅ |
-| postgres-pdb | 1 | Prevent database pod eviction | ✅ |
-| kafka-pdb | 1 | Prevent Kafka broker pod eviction | ✅ |
-| prometheus-pdb | 1 | Keep metrics collection running | ✅ |
-| grafana-pdb | 1 | Keep dashboards accessible | ✅ |
-| nginx-ingress-pdb | 1 | Keep ingress controller running | ✅ |
+| api-gateway-pdb | 1 | Keep ≥1 API Gateway pod during maintenance |  |
+| analytics-service-pdb | 1 | Keep ≥1 Analytics pod during maintenance |  |
+| alert-service-pdb | 1 | Keep ≥1 Alert Service pod during maintenance |  |
+| postgres-pdb | 1 | Prevent database pod eviction |  |
+| kafka-pdb | 1 | Prevent Kafka broker pod eviction |  |
+| prometheus-pdb | 1 | Keep metrics collection running |  |
+| grafana-pdb | 1 | Keep dashboards accessible |  |
+| nginx-ingress-pdb | 1 | Keep ingress controller running |  |
 
 **Verification**:
 ```bash
@@ -317,7 +317,7 @@ kubectl drain <node> --ignore-daemonsets --dry-run
 # Expected: "error when evicting pod X - cannot evict pod due to PodDisruptionBudget"
 ```
 
-**Security Posture**: ✅ FULLY PROTECTED
+**Security Posture**:  FULLY PROTECTED
 
 ---
 
@@ -327,13 +327,13 @@ kubectl drain <node> --ignore-daemonsets --dry-run
 
 | Policy | Type | Purpose | Status |
 |--------|------|---------|--------|
-| eventpulse-deny-all-ingress | Ingress | Default deny all (explicit allow) | ✅ DEFINED |
-| eventpulse-allow-prometheus-scrape | Ingress | Allow Prometheus to scrape metrics | ✅ DEFINED |
-| eventpulse-allow-api-gateway-from-ingress | Ingress | Allow NGINX → API Gateway | ✅ DEFINED |
-| eventpulse-allow-analytics-service-egress | Egress | Allow Analytics → Kafka/DB | ✅ DEFINED |
-| eventpulse-allow-alert-service-egress | Egress | Allow Alert → Kafka/DB | ✅ DEFINED |
-| eventpulse-allow-postgres-from-services | Ingress | Allow services → PostgreSQL | ✅ DEFINED |
-| eventpulse-allow-kafka-from-services | Ingress | Allow services → Kafka | ✅ DEFINED |
+| eventpulse-deny-all-ingress | Ingress | Default deny all (explicit allow) |  DEFINED |
+| eventpulse-allow-prometheus-scrape | Ingress | Allow Prometheus to scrape metrics |  DEFINED |
+| eventpulse-allow-api-gateway-from-ingress | Ingress | Allow NGINX → API Gateway |  DEFINED |
+| eventpulse-allow-analytics-service-egress | Egress | Allow Analytics → Kafka/DB |  DEFINED |
+| eventpulse-allow-alert-service-egress | Egress | Allow Alert → Kafka/DB |  DEFINED |
+| eventpulse-allow-postgres-from-services | Ingress | Allow services → PostgreSQL |  DEFINED |
+| eventpulse-allow-kafka-from-services | Ingress | Allow services → Kafka |  DEFINED |
 
 **Status**: ⏳ OPTIONAL (CNI-dependent, templates provided)
 
@@ -359,7 +359,7 @@ kubectl exec -n eventpulse api-gateway-xxxxx -- nc -zv postgres 5432
 
 ## Resource Limits & Requests
 
-**Status**: ✅ IMPLEMENTED ACROSS ALL SERVICES
+**Status**:  IMPLEMENTED ACROSS ALL SERVICES
 
 | Service | CPU Request | CPU Limit | Mem Request | Mem Limit |
 |---------|-------------|-----------|-------------|-----------|
@@ -390,9 +390,9 @@ kubectl top pods -n eventpulse
 
 | Service | Min Replicas | Max Replicas | Target Metric | Status |
 |---------|--------------|--------------|---------------|--------|
-| API Gateway | 2 | 10 | CPU 70% | ✅ CONFIGURED |
-| Analytics Service | 2 | 10 | CPU 70% | ✅ CONFIGURED |
-| Alert Service | 2 | 10 | CPU 70% | ✅ CONFIGURED |
+| API Gateway | 2 | 10 | CPU 70% |  CONFIGURED |
+| Analytics Service | 2 | 10 | CPU 70% |  CONFIGURED |
+| Alert Service | 2 | 10 | CPU 70% |  CONFIGURED |
 
 **Verification**:
 ```bash
@@ -416,18 +416,18 @@ kubectl top pods -n eventpulse -l app=api-gateway
 
 ## Graceful Shutdown Configuration
 
-**Status**: ✅ IMPLEMENTED ACROSS ALL SERVICES
+**Status**:  IMPLEMENTED ACROSS ALL SERVICES
 
 | Service | Grace Period | Purpose | Status |
 |---------|--------------|---------|--------|
-| PostgreSQL | 30s | Clean connection close | ✅ |
-| Kafka | 60s | Broker rebalance + shutdown | ✅ |
-| API Gateway | 60s | In-flight request completion | ✅ |
-| Analytics Service | 60s | Consumer rebalance + shutdown | ✅ |
-| Alert Service | 60s | Database + consumer shutdown | ✅ |
-| Prometheus | 30s | Flush metrics + shutdown | ✅ |
-| Grafana | 30s | Session cleanup | ✅ |
-| NGINX Ingress | 60s | Connection draining | ✅ |
+| PostgreSQL | 30s | Clean connection close |  |
+| Kafka | 60s | Broker rebalance + shutdown |  |
+| API Gateway | 60s | In-flight request completion |  |
+| Analytics Service | 60s | Consumer rebalance + shutdown |  |
+| Alert Service | 60s | Database + consumer shutdown |  |
+| Prometheus | 30s | Flush metrics + shutdown |  |
+| Grafana | 30s | Session cleanup |  |
+| NGINX Ingress | 60s | Connection draining |  |
 
 **Verification**:
 ```bash
@@ -443,18 +443,18 @@ kubectl delete pod -n eventpulse api-gateway-xxxxx --grace-period=60 -v=3
 
 ## Health Probes Status
 
-**Status**: ✅ IMPLEMENTED ACROSS ALL SERVICES
+**Status**:  IMPLEMENTED ACROSS ALL SERVICES
 
 | Service | Startup Probe | Readiness Probe | Liveness Probe | Status |
 |---------|---------------|-----------------|----------------|--------|
-| PostgreSQL | ✅ | ✅ | ✅ | All 3 configured |
-| Kafka | ✅ | ✅ | ✅ | All 3 configured |
-| API Gateway | ✅ | ✅ | ✅ | All 3 configured |
-| Analytics Service | ✅ | ✅ | ✅ | All 3 configured |
-| Alert Service | ✅ | ✅ | ✅ | All 3 configured |
-| Prometheus | ✅ | ✅ | ✅ | All 3 configured |
-| Grafana | ❌ | ✅ | ✅ | Startup probe missing (default) |
-| NGINX Ingress | ❌ | ✅ | ✅ | Startup probe missing (not needed) |
+| PostgreSQL |  |  |  | All 3 configured |
+| Kafka |  |  |  | All 3 configured |
+| API Gateway |  |  |  | All 3 configured |
+| Analytics Service |  |  |  | All 3 configured |
+| Alert Service |  |  |  | All 3 configured |
+| Prometheus |  |  |  | All 3 configured |
+| Grafana |  |  |  | Startup probe missing (default) |
+| NGINX Ingress |  |  |  | Startup probe missing (not needed) |
 
 **Verification**:
 ```bash
@@ -476,15 +476,15 @@ kubectl get pod -n eventpulse api-gateway-xxxxx
 
 ## RBAC Status
 
-**Status**: ✅ IMPLEMENTED FOR MONITORING & INGRESS
+**Status**:  IMPLEMENTED FOR MONITORING & INGRESS
 
 | Component | Type | Permissions | Purpose | Status |
 |-----------|------|-----------|---------|--------|
-| Prometheus | ServiceAccount + ClusterRole | read: pods, services, nodes | Discover and scrape metrics | ✅ |
-| NGINX Ingress | ServiceAccount + ClusterRole | read: ingresses, services, endpoints | Watch ingress resources | ✅ |
-| API Gateway | Default ServiceAccount | None | No cluster API access needed | ✅ |
-| Analytics Service | Default ServiceAccount | None | No cluster API access needed | ✅ |
-| Alert Service | Default ServiceAccount | None | No cluster API access needed | ✅ |
+| Prometheus | ServiceAccount + ClusterRole | read: pods, services, nodes | Discover and scrape metrics |  |
+| NGINX Ingress | ServiceAccount + ClusterRole | read: ingresses, services, endpoints | Watch ingress resources |  |
+| API Gateway | Default ServiceAccount | None | No cluster API access needed |  |
+| Analytics Service | Default ServiceAccount | None | No cluster API access needed |  |
+| Alert Service | Default ServiceAccount | None | No cluster API access needed |  |
 
 **Verification**:
 ```bash
@@ -516,24 +516,24 @@ kubectl get clusterrolebindings | grep eventpulse
 
 | Feature | Implementation Count | Services | Status |
 |---------|----------------------|----------|--------|
-| **Security Contexts** | 8/8 | All services | ✅ COMPLETE |
-| **Non-Root Execution** | 8/8 | All services | ✅ COMPLETE |
-| **Privilege Escalation Prevention** | 8/8 | All services | ✅ COMPLETE |
-| **Capability Dropping** | 8/8 | All services | ✅ COMPLETE |
-| **Read-Only Filesystem** | 3/8 | API Gateway, Analytics, Alert | ⚠️ PARTIAL (data services need writable) |
-| **Pod Anti-Affinity** | 5/8 | All multi-replica + Kafka | ✅ COMPLETE |
-| **Pod Disruption Budgets** | 8/8 | All services | ✅ COMPLETE |
-| **Graceful Shutdown** | 8/8 | All services | ✅ COMPLETE |
-| **Health Probes** | 8/8 | All services | ✅ COMPLETE |
-| **Resource Limits** | 8/8 | All services | ✅ COMPLETE |
-| **RBAC** | 2/8 | Prometheus, NGINX | ✅ COMPLETE (needed services) |
-| **NetworkPolicies** | 7/8 | All services (optional) | ✅ TEMPLATES PROVIDED |
+| **Security Contexts** | 8/8 | All services |  COMPLETE |
+| **Non-Root Execution** | 8/8 | All services |  COMPLETE |
+| **Privilege Escalation Prevention** | 8/8 | All services |  COMPLETE |
+| **Capability Dropping** | 8/8 | All services |  COMPLETE |
+| **Read-Only Filesystem** | 3/8 | API Gateway, Analytics, Alert |  PARTIAL (data services need writable) |
+| **Pod Anti-Affinity** | 5/8 | All multi-replica + Kafka |  COMPLETE |
+| **Pod Disruption Budgets** | 8/8 | All services |  COMPLETE |
+| **Graceful Shutdown** | 8/8 | All services |  COMPLETE |
+| **Health Probes** | 8/8 | All services |  COMPLETE |
+| **Resource Limits** | 8/8 | All services |  COMPLETE |
+| **RBAC** | 2/8 | Prometheus, NGINX |  COMPLETE (needed services) |
+| **NetworkPolicies** | 7/8 | All services (optional) |  TEMPLATES PROVIDED |
 
 ---
 
 ## Security Recommendations
 
-### ✅ Implemented
+###  Implemented
 
 1. Non-root user execution on all services
 2. Privilege escalation prevention on all services
@@ -665,6 +665,6 @@ kubectl get pods -n eventpulse -o wide
 
 ---
 
-**Status**: Phase 7 Security Hardening - ✅ COMPLETE
+**Status**: Phase 7 Security Hardening -  COMPLETE
 
 All critical security features implemented. Deployment is production-ready with comprehensive security hardening.
