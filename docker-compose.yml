@@ -101,6 +101,9 @@ services:
       KAFKA_ANALYTICS_GROUP: ${KAFKA_ANALYTICS_GROUP:-analytics-group}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
+    ports:
+      - "8081:8081"
+
     depends_on:
       kafka:
         condition: service_healthy
@@ -130,6 +133,9 @@ services:
       KAFKA_TOPIC_DLQ: ${KAFKA_TOPIC_DLQ:-events.dlq}
       KAFKA_ALERT_GROUP: ${KAFKA_ALERT_GROUP:-alert-group}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+    ports:
+      - "8082:8082"
 
     depends_on:
       kafka:
