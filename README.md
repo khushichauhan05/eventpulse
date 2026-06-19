@@ -12,6 +12,32 @@ EventPulse is a production-grade event-driven fraud detection platform built wit
 
 Transaction events are ingested in real-time through REST APIs, scored by a streaming analytics service using machine learning pipelines, converted into fraud alerts, and persisted in PostgreSQL. The entire system is containerized with Docker and orchestrated on Kubernetes with full observability through Prometheus metrics and Grafana dashboards.
 
+## Live Demo
+
+### Grafana — Real-Time Metrics Dashboard
+
+![Grafana Dashboard](docs/screenshots/grafana-dashboard-1.png)
+
+![Grafana Dashboard — Total Alerts](docs/screenshots/grafana-dashboard-2.png)
+
+### Fraud Alerts API — Real-Time Detection
+
+![Alerts API](docs/screenshots/alerts-api.png)
+
+### Load Test Results — 844 Transactions, 0 Failures, P99 < 45ms
+
+![Load Test Results](docs/screenshots/load-test-results.png)
+
+### Prometheus — Metrics (Table)
+
+![Prometheus Table](docs/screenshots/prometheus-table.png)
+
+### Prometheus — Metrics (Graph)
+
+![Prometheus Graph](docs/screenshots/prometheus-graph.png)
+
+---
+
 ## Key Highlights
 
 - **Production-Grade**: Security-hardened Kubernetes deployment with RBAC, pod disruption budgets, and security contexts
