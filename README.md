@@ -24,7 +24,7 @@ Transaction events are ingested in real-time through REST APIs, scored by a stre
 
 ![Alerts API](docs/screenshots/alerts-api.png)
 
-### Load Test Results — 844 Transactions, 0 Failures, P99 < 45ms
+### Load Test Results — 818 Transactions, 0 Failures, P99 < 48ms
 
 ![Load Test Results](docs/screenshots/load-test-results.png)
 
