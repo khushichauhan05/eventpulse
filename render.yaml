@@ -9,6 +9,12 @@
 #   4. After deploy, copy the ml-service URL into the dashboard settings
 
 services:
+  - type: redis
+    name: eventpulse-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
   - type: web
     name: eventpulse-ml
     runtime: docker
@@ -34,9 +40,3 @@ services:
         name: Cache-Control
         value: no-cache
     autoDeploy: true
-
-databases:
-  - name: eventpulse-redis
-    type: redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
