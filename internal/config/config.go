@@ -18,6 +18,7 @@ type Config struct {
 	AnalyticsGroup string
 	AlertGroup     string
 	LogLevel       string
+	MLServiceURL   string // base URL of the Python ML scoring service, e.g. http://ml-service:8000
 }
 
 func Load(serviceName string) Config {
@@ -34,6 +35,7 @@ func Load(serviceName string) Config {
 		AnalyticsGroup: getEnv("KAFKA_ANALYTICS_GROUP", "analytics-group"),
 		AlertGroup:     getEnv("KAFKA_ALERT_GROUP", "alert-group"),
 		LogLevel:       getEnv("LOG_LEVEL", "INFO"),
+		MLServiceURL:   getEnv("ML_SERVICE_URL", "http://ml-service:8000"),
 	}
 }
 

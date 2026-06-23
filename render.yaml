@@ -1,0 +1,42 @@
+# Render.com deployment — live demo stack
+# Deploys: ML service (Docker) + Redis + Dashboard (static site)
+# Full pipeline (Kafka, Go services) runs locally with: docker compose up -d --build
+#
+# Deploy steps:
+#   1. Push this repo to GitHub
+#   2. Go to https://dashboard.render.com → New → Blueprint
+#   3. Connect your repo — Render reads this file automatically
+#   4. After deploy, copy the ml-service URL into the dashboard settings
+
+services:
+  - type: web
+    name: eventpulse-ml
+    runtime: docker
+    dockerfilePath: ./services/ml-service/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: eventpulse-redis
+          property: connectionString
+    healthCheckPath: /health
+    autoDeploy: true
+
+  - type: web
+    name: eventpulse-dashboard
+    runtime: static
+    buildCommand: echo "static"
+    staticPublishPath: ./services/dashboard
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    autoDeploy: true
+
+databases:
+  - name: eventpulse-redis
+    type: redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru

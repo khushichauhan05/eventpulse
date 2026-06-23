@@ -19,9 +19,10 @@ import (
 
 const alertService = "alert-service"
 
-// IsHighRisk reports whether an event with the given score should trigger an alert.
+// IsHighRisk reports whether a processed event should trigger a fraud alert.
+// Threshold lowered to 70 to capture ML-scored medium-high risk events.
 func IsHighRisk(riskScore int) bool {
-	return riskScore >= 80
+	return riskScore >= 70
 }
 
 func RunAlert(ctx context.Context, cfg config.Config, db *sql.DB, logger *slog.Logger) error {
@@ -51,7 +52,7 @@ func RunAlert(ctx context.Context, cfg config.Config, db *sql.DB, logger *slog.L
 
 		var event models.ProcessedEvent
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
-			logger.Warn("malformed processed event — routing to DLQ", "error", err, "topic", cfg.ProcessedTopic)
+			logger.Warn("malformed processed event — routing to DLQ", "error", err)
 			_ = internalKafka.WriteWithRetry(ctx, dlq, msg.Value)
 			metrics.DLQMessages.WithLabelValues(alertService, "unmarshal_error").Inc()
 			_ = retry.Do(ctx, 3, 200*time.Millisecond, func() error {
@@ -67,11 +68,20 @@ func RunAlert(ctx context.Context, cfg config.Config, db *sql.DB, logger *slog.L
 			continue
 		}
 
+		message := "HIGH RISK TRANSACTION DETECTED"
+		if event.MLScored {
+			message = fmt.Sprintf("ML FRAUD ALERT — risk score %d, confidence %.0f%%",
+				event.RiskScore, event.Confidence*100)
+		}
+
 		alert := models.Alert{
-			EventID:   event.EventID,
-			UserID:    event.UserID,
-			RiskScore: event.RiskScore,
-			Message:   "HIGH RISK TRANSACTION DETECTED",
+			EventID:     event.EventID,
+			UserID:      event.UserID,
+			RiskScore:   event.RiskScore,
+			Confidence:  event.Confidence,
+			Message:     message,
+			MLScored:    event.MLScored,
+			Explanation: event.Explanation,
 		}
 
 		payload, err := json.Marshal(alert)
@@ -87,13 +97,16 @@ func RunAlert(ctx context.Context, cfg config.Config, db *sql.DB, logger *slog.L
 			continue
 		}
 
+		explanationJSON, _ := json.Marshal(alert.Explanation)
+
 		// ON CONFLICT DO NOTHING provides idempotency — duplicate event_ids are silently skipped.
 		if err := retry.Do(ctx, 5, 200*time.Millisecond, func() error {
 			_, err := db.ExecContext(ctx,
-				`INSERT INTO alerts (event_id, user_id, risk_score, message)
-				 VALUES ($1, $2, $3, $4)
+				`INSERT INTO alerts (event_id, user_id, risk_score, confidence, message, ml_scored, explanation)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7)
 				 ON CONFLICT (event_id) DO NOTHING`,
-				alert.EventID, alert.UserID, alert.RiskScore, alert.Message)
+				alert.EventID, alert.UserID, alert.RiskScore, alert.Confidence,
+				alert.Message, alert.MLScored, string(explanationJSON))
 			return err
 		}); err != nil {
 			logger.Error("failed to store alert", "error", err)
@@ -110,7 +123,13 @@ func RunAlert(ctx context.Context, cfg config.Config, db *sql.DB, logger *slog.L
 
 		metrics.AlertsGenerated.Inc()
 		metrics.EventsProcessed.WithLabelValues(alertService).Inc()
-		logger.Info("alert generated", "user_id", alert.UserID, "risk_score", alert.RiskScore, "event_id", alert.EventID)
+		logger.Info("fraud alert generated",
+			"user_id", alert.UserID,
+			"risk_score", alert.RiskScore,
+			"confidence", alert.Confidence,
+			"ml_scored", alert.MLScored,
+			"event_id", alert.EventID,
+		)
 	}
 }
 

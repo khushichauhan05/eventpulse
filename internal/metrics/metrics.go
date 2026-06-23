@@ -46,4 +46,21 @@ var (
 		Help:    "Distribution of risk scores assigned to events.",
 		Buckets: []float64{10, 20, 30, 50, 70, 80, 90, 100},
 	})
+
+	// ML-specific metrics
+	MLInferenceLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "eventpulse_ml_inference_latency_seconds",
+		Help:    "Round-trip latency for ML service scoring calls from the analytics service.",
+		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5},
+	})
+
+	MLFallbacks = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "eventpulse_ml_fallbacks_total",
+		Help: "Events scored by the rule-based fallback because the ML service was unavailable.",
+	})
+
+	MLScoredEvents = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "eventpulse_ml_scored_events_total",
+		Help: "Events successfully scored by the ML service.",
+	})
 )

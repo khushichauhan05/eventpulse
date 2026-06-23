@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EventPulse — Real-Time Fraud Detection</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  body { background: #0f1117; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+  .card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px; }
+  .badge-safe    { background:#064e3b; color:#6ee7b7; }
+  .badge-medium  { background:#451a03; color:#fbbf24; }
+  .badge-high    { background:#450a0a; color:#fca5a5; }
+  .gauge-ring    { transition: stroke-dashoffset 0.8s cubic-bezier(0.34,1.56,0.64,1); }
+  input, select  { background:#0f1117; border:1px solid #2d3148; border-radius:8px;
+                   color:#e2e8f0; padding:8px 12px; width:100%; outline:none; }
+  input:focus, select:focus { border-color:#6366f1; }
+  .btn-primary   { background:linear-gradient(135deg,#6366f1,#8b5cf6);
+                   border:none; border-radius:8px; color:#fff; cursor:pointer;
+                   font-weight:600; padding:10px 24px; transition:opacity .2s; }
+  .btn-primary:hover { opacity:.85; }
+  .btn-preset    { background:#1e2035; border:1px solid #2d3148; border-radius:6px;
+                   color:#94a3b8; cursor:pointer; font-size:12px; padding:5px 10px;
+                   transition:all .15s; }
+  .btn-preset:hover { border-color:#6366f1; color:#c7d2fe; }
+  .bar-pos { background:linear-gradient(90deg,#ef4444,#b91c1c); border-radius:3px; height:12px; }
+  .bar-neg { background:linear-gradient(90deg,#059669,#047857); border-radius:3px; height:12px; }
+  .pulse { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:#0f1117; }
+  ::-webkit-scrollbar-thumb { background:#2d3148; border-radius:2px; }
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+<!-- Header -->
+<div class="mb-8 flex items-center justify-between flex-wrap gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-white">
+      <span class="text-indigo-400">Event</span>Pulse
+      <span class="ml-2 text-sm font-normal text-slate-400">Fraud Detection</span>
+    </h1>
+    <p class="text-slate-500 text-sm mt-1">Isolation Forest · SHAP Explanations · Real-time Kafka Pipeline</p>
+  </div>
+  <div class="flex items-center gap-3">
+    <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-slate-600 inline-block"></span>
+    <span id="statusText" class="text-sm text-slate-500">not connected</span>
+  </div>
+</div>
+
+<!-- Config bar -->
+<div class="card p-4 mb-6 flex flex-wrap gap-4 items-end">
+  <div class="flex-1 min-w-48">
+    <label class="text-xs text-slate-500 mb-1 block">ML Service URL</label>
+    <input id="mlUrl" type="text" placeholder="http://localhost:8000" value="http://localhost:8000"/>
+  </div>
+  <div class="flex-1 min-w-48">
+    <label class="text-xs text-slate-500 mb-1 block">API Gateway URL (optional)</label>
+    <input id="gwUrl" type="text" placeholder="http://localhost:8080" value="http://localhost:8080"/>
+  </div>
+  <button class="btn-primary" onclick="testConnection()">Connect</button>
+</div>
+
+<!-- Main grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+  <!-- Left: Submit Transaction -->
+  <div class="card p-6">
+    <h2 class="text-base font-semibold text-white mb-4">Submit Transaction</h2>
+
+    <!-- Presets -->
+    <div class="mb-4">
+      <p class="text-xs text-slate-500 mb-2">Quick presets:</p>
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-preset" onclick="applyPreset('safe')">✅ Normal Purchase</button>
+        <button class="btn-preset" onclick="applyPreset('transfer')">⚠️ Large Transfer</button>
+        <button class="btn-preset" onclick="applyPreset('withdrawal')">🚨 Suspicious Withdrawal</button>
+        <button class="btn-preset" onclick="applyPreset('velocity')">🔥 Velocity Attack</button>
+      </div>
+    </div>
+
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-slate-500 mb-1 block">User ID</label>
+        <input id="userId" type="text" placeholder="user_42" value="user_42"/>
+      </div>
+      <div>
+        <label class="text-xs text-slate-500 mb-1 block">Amount (₹)</label>
+        <input id="amount" type="number" placeholder="5000" value="5000" min="1"/>
+      </div>
+      <div>
+        <label class="text-xs text-slate-500 mb-1 block">Event Type</label>
+        <select id="eventType">
+          <option value="purchase">Purchase</option>
+          <option value="payment">Payment</option>
+          <option value="transfer">Transfer</option>
+          <option value="withdrawal">Withdrawal</option>
+          <option value="deposit">Deposit</option>
+          <option value="refund">Refund</option>
+        </select>
+      </div>
+      <button class="btn-primary w-full mt-2" onclick="scoreTransaction()">
+        Analyze Transaction →
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="mt-6 grid grid-cols-3 gap-3">
+      <div class="bg-slate-800 rounded-lg p-3 text-center">
+        <div id="statTotal" class="text-xl font-bold text-white">0</div>
+        <div class="text-xs text-slate-500 mt-1">Scored</div>
+      </div>
+      <div class="bg-slate-800 rounded-lg p-3 text-center">
+        <div id="statAlerts" class="text-xl font-bold text-red-400">0</div>
+        <div class="text-xs text-slate-500 mt-1">Alerts</div>
+      </div>
+      <div class="bg-slate-800 rounded-lg p-3 text-center">
+        <div id="statLatency" class="text-xl font-bold text-indigo-400">—</div>
+        <div class="text-xs text-slate-500 mt-1">Latency</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Result -->
+  <div class="card p-6">
+    <h2 class="text-base font-semibold text-white mb-4">ML Analysis Result</h2>
+
+    <div id="resultPlaceholder" class="flex items-center justify-center h-64 text-slate-600 text-sm">
+      Submit a transaction to see real-time ML scoring
+    </div>
+
+    <div id="resultPanel" class="hidden">
+      <!-- Gauge + verdict -->
+      <div class="flex items-center gap-6 mb-6">
+        <div class="relative flex-shrink-0">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="#1e2035" stroke-width="12"/>
+            <circle id="gaugeArc" cx="60" cy="60" r="50" fill="none"
+              stroke="#6366f1" stroke-width="12"
+              stroke-dasharray="314" stroke-dashoffset="314"
+              stroke-linecap="round"
+              transform="rotate(-90 60 60)"
+              class="gauge-ring"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center">
+            <span id="gaugeScore" class="text-3xl font-bold text-white">—</span>
+            <span class="text-xs text-slate-500">/ 100</span>
+          </div>
+        </div>
+        <div>
+          <div id="verdictBadge" class="inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2">—</div>
+          <div class="text-sm text-slate-400">Confidence: <span id="confidence" class="text-white font-medium">—</span></div>
+          <div class="text-sm text-slate-400">Model: <span id="modelName" class="text-indigo-300 font-mono text-xs">—</span></div>
+          <div class="text-sm text-slate-400">Scored by: <span id="scoredBy" class="text-white font-medium">—</span></div>
+        </div>
+      </div>
+
+      <!-- SHAP explanation -->
+      <div>
+        <p class="text-xs text-slate-500 mb-3 uppercase tracking-wider">Risk Factor Contributions (SHAP)</p>
+        <div id="shapBars" class="space-y-2.5"></div>
+        <p class="text-xs text-slate-600 mt-3">Positive → increases fraud risk · Negative → reduces risk</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Alerts feed -->
+<div class="card p-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-base font-semibold text-white">Live Fraud Alerts</h2>
+    <button class="btn-preset" onclick="fetchAlerts()">↻ Refresh</button>
+  </div>
+  <div id="alertsTable">
+    <p class="text-slate-600 text-sm text-center py-6">No alerts yet. Submit a high-risk transaction to see alerts appear here.</p>
+  </div>
+</div>
+
+<script>
+// ── state ──────────────────────────────────────────────────────────────────
+let totalScored = 0, totalAlerts = 0;
+
+const PRESETS = {
+  safe:       { userId:'user_demo', amount:350,    type:'purchase',   label:'Normal Purchase' },
+  transfer:   { userId:'user_corp', amount:18500,  type:'transfer',   label:'Large Transfer' },
+  withdrawal: { userId:'user_vip',  amount:92400,  type:'withdrawal', label:'Suspicious Withdrawal' },
+  velocity:   { userId:'user_bot',  amount:499,    type:'payment',    label:'Velocity Attack' },
+};
+
+function applyPreset(key) {
+  const p = PRESETS[key];
+  document.getElementById('userId').value = p.userId;
+  document.getElementById('amount').value = p.amount;
+  document.getElementById('eventType').value = p.type;
+  if (key === 'velocity') rapidFire();
+}
+
+// ── connection test ─────────────────────────────────────────────────────────
+async function testConnection() {
+  const url = document.getElementById('mlUrl').value.trim();
+  try {
+    const r = await fetch(url + '/health', { signal: AbortSignal.timeout(4000) });
+    if (r.ok) { setStatus(true); }
+    else throw new Error('non-200');
+  } catch { setStatus(false); }
+}
+
+function setStatus(ok) {
+  document.getElementById('statusDot').className = `w-2.5 h-2.5 rounded-full inline-block ${ok ? 'bg-emerald-500' : 'bg-red-500'}`;
+  document.getElementById('statusText').textContent = ok ? 'ML service connected' : 'ML service unreachable';
+  document.getElementById('statusText').className = `text-sm ${ok ? 'text-emerald-400' : 'text-red-400'}`;
+}
+
+// ── scoring ─────────────────────────────────────────────────────────────────
+async function scoreTransaction() {
+  const mlUrl = document.getElementById('mlUrl').value.trim();
+  const gwUrl = document.getElementById('gwUrl').value.trim();
+  const userId = document.getElementById('userId').value.trim() || 'user_42';
+  const amount = parseFloat(document.getElementById('amount').value) || 100;
+  const eventType = document.getElementById('eventType').value;
+
+  const t0 = performance.now();
+  try {
+    const resp = await fetch(mlUrl + '/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, amount, event_type: eventType }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const latency = Math.round(performance.now() - t0);
+
+    if (!resp.ok) throw new Error(`ML service: HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    totalScored++;
+    document.getElementById('statTotal').textContent = totalScored;
+    document.getElementById('statLatency').textContent = latency + 'ms';
+
+    renderResult(data);
+    setStatus(true);
+
+    // Also push to pipeline (best-effort — don't block on failure)
+    if (gwUrl) {
+      fetch(gwUrl + '/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, amount, event_type: eventType }),
+      }).then(() => setTimeout(fetchAlerts, 3500)).catch(() => {});
+    }
+  } catch (err) {
+    alert('Scoring failed: ' + err.message + '\n\nMake sure the ML service is running and CORS is enabled.');
+    setStatus(false);
+  }
+}
+
+function renderResult(data) {
+  document.getElementById('resultPlaceholder').classList.add('hidden');
+  document.getElementById('resultPanel').classList.remove('hidden');
+
+  const score = data.risk_score;
+  const pct = score / 100;
+
+  // Gauge arc (314 = 2πr for r=50)
+  document.getElementById('gaugeArc').setAttribute('stroke-dashoffset', 314 * (1 - pct));
+  document.getElementById('gaugeArc').setAttribute('stroke',
+    score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#22c55e');
+  document.getElementById('gaugeScore').textContent = score;
+  document.getElementById('gaugeScore').className = `text-3xl font-bold ${
+    score >= 70 ? 'text-red-400' : score >= 40 ? 'text-yellow-400' : 'text-emerald-400'}`;
+
+  const badge = document.getElementById('verdictBadge');
+  if (score >= 70) {
+    badge.textContent = '🚨 HIGH RISK — FRAUD ALERT';
+    badge.className = 'inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2 badge-high';
+    totalAlerts++;
+    document.getElementById('statAlerts').textContent = totalAlerts;
+  } else if (score >= 40) {
+    badge.textContent = '⚠️ MEDIUM RISK — Monitor';
+    badge.className = 'inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2 badge-medium';
+  } else {
+    badge.textContent = '✅ LOW RISK — Safe';
+    badge.className = 'inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2 badge-safe';
+  }
+
+  document.getElementById('confidence').textContent = Math.round(data.confidence * 100) + '%';
+  document.getElementById('modelName').textContent = data.model || 'isolation_forest_v2';
+  document.getElementById('scoredBy').textContent = 'ML (Isolation Forest + SHAP)';
+
+  // SHAP bars
+  const container = document.getElementById('shapBars');
+  container.innerHTML = '';
+  const entries = Object.entries(data.explanation || {})
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+  const maxAbs = Math.max(...entries.map(([,v]) => Math.abs(v)), 0.01);
+
+  for (const [feature, value] of entries) {
+    const pctBar = Math.round((Math.abs(value) / maxAbs) * 100);
+    const isPos = value > 0;
+    const color = isPos ? 'text-red-400' : 'text-emerald-400';
+    const sign  = isPos ? '+' : '';
+    container.innerHTML += `
+      <div>
+        <div class="flex justify-between mb-1">
+          <span class="text-xs text-slate-300">${feature}</span>
+          <span class="text-xs font-mono ${color}">${sign}${value.toFixed(3)}</span>
+        </div>
+        <div class="bg-slate-800 rounded-sm h-3 overflow-hidden">
+          <div class="${isPos ? 'bar-pos' : 'bar-neg'}" style="width:${pctBar}%"></div>
+        </div>
+      </div>`;
+  }
+}
+
+// ── alerts feed ─────────────────────────────────────────────────────────────
+async function fetchAlerts() {
+  const gwUrl = document.getElementById('gwUrl').value.trim();
+  if (!gwUrl) return;
+  try {
+    const resp = await fetch(gwUrl + '/alerts', { signal: AbortSignal.timeout(4000) });
+    if (!resp.ok) return;
+    const alerts = await resp.json();
+    renderAlerts(alerts);
+  } catch { /* silent */ }
+}
+
+function renderAlerts(alerts) {
+  const el = document.getElementById('alertsTable');
+  if (!alerts || alerts.length === 0) {
+    el.innerHTML = '<p class="text-slate-600 text-sm text-center py-6">No alerts yet.</p>';
+    return;
+  }
+  const rows = alerts.slice(0, 15).map(a => {
+    const score = a.risk_score;
+    const cls = score >= 80 ? 'text-red-400' : score >= 60 ? 'text-yellow-400' : 'text-emerald-400';
+    const badge = a.ml_scored
+      ? '<span class="text-xs bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded">ML</span>'
+      : '<span class="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">rule</span>';
+    const conf = a.confidence ? Math.round(a.confidence * 100) + '%' : '—';
+    const ts = new Date(a.created_at).toLocaleTimeString();
+    const topFactor = a.explanation
+      ? Object.entries(a.explanation).sort((x,y)=>Math.abs(y[1])-Math.abs(x[1]))[0]
+      : null;
+    const factor = topFactor ? `<span class="text-xs text-slate-500">${topFactor[0]}: ${topFactor[1].toFixed(3)}</span>` : '';
+
+    return `<tr class="border-t border-slate-800 hover:bg-slate-800/50 transition-colors">
+      <td class="py-2.5 px-3 text-sm font-mono text-slate-300">${a.user_id}</td>
+      <td class="py-2.5 px-3 text-sm ${cls} font-bold">${score}</td>
+      <td class="py-2.5 px-3 text-sm text-slate-400">${conf}</td>
+      <td class="py-2.5 px-3">${badge}</td>
+      <td class="py-2.5 px-3">${factor}</td>
+      <td class="py-2.5 px-3 text-xs text-slate-500">${ts}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <table class="w-full text-left">
+      <thead>
+        <tr class="text-xs text-slate-500 uppercase">
+          <th class="pb-2 px-3">User</th>
+          <th class="pb-2 px-3">Risk</th>
+          <th class="pb-2 px-3">Confidence</th>
+          <th class="pb-2 px-3">Scorer</th>
+          <th class="pb-2 px-3">Top Factor</th>
+          <th class="pb-2 px-3">Time</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── velocity simulation ─────────────────────────────────────────────────────
+async function rapidFire() {
+  const mlUrl = document.getElementById('mlUrl').value.trim();
+  for (let i = 0; i < 6; i++) {
+    await new Promise(r => setTimeout(r, 400));
+    await fetch(mlUrl + '/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: 'user_bot', amount: 499 + i, event_type: 'payment' }),
+    }).catch(() => {});
+  }
+  await scoreTransaction();
+}
+
+// ── auto-poll alerts every 10s ──────────────────────────────────────────────
+setInterval(fetchAlerts, 10000);
+
+// Initial connection test on load
+window.addEventListener('load', () => {
+  testConnection();
+  fetchAlerts();
+});
+</script>
+</body>
+</html>

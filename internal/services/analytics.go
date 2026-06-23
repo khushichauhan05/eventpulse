@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,13 +19,49 @@ import (
 
 const analyticsService = "analytics-service"
 
-// ScoreEvent returns a risk score for the given transaction amount.
-// Amounts above 10 000 are classified as high risk (score 90).
+var mlHTTPClient = &http.Client{Timeout: 2 * time.Second}
+
+// ScoreEvent is the rule-based fallback used when the ML service is unavailable.
 func ScoreEvent(amount float64) int {
 	if amount > 10000 {
 		return 90
 	}
 	return 20
+}
+
+// scoreWithML calls the Python ML service and returns its response.
+// Returns an error if the service is unreachable or returns a non-200 status.
+func scoreWithML(ctx context.Context, mlURL string, event models.Event) (models.MLScoreResponse, error) {
+	body, err := json.Marshal(models.MLScoreRequest{
+		UserID:    event.UserID,
+		Amount:    event.Amount,
+		EventType: event.EventType,
+	})
+	if err != nil {
+		return models.MLScoreResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mlURL+"/score", bytes.NewReader(body))
+	if err != nil {
+		return models.MLScoreResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := mlHTTPClient.Do(req)
+	if err != nil {
+		return models.MLScoreResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return models.MLScoreResponse{}, fmt.Errorf("ml service returned HTTP %d", resp.StatusCode)
+	}
+
+	var result models.MLScoreResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return models.MLScoreResponse{}, err
+	}
+	return result, nil
 }
 
 func RunAnalytics(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
@@ -37,7 +74,7 @@ func RunAnalytics(ctx context.Context, cfg config.Config, logger *slog.Logger) e
 	dlq := kafka.NewWriter(cfg.KafkaBrokers, cfg.DLQTopic)
 	defer dlq.Close()
 
-	logger.Info("analytics service started")
+	logger.Info("analytics service started", "ml_service_url", cfg.MLServiceURL)
 
 	for {
 		msg, err := reader.ReadMessage(ctx)
@@ -54,7 +91,7 @@ func RunAnalytics(ctx context.Context, cfg config.Config, logger *slog.Logger) e
 
 		var event models.Event
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
-			logger.Warn("malformed event — routing to DLQ", "error", err, "topic", cfg.RawTopic)
+			logger.Warn("malformed event — routing to DLQ", "error", err)
 			_ = kafka.WriteWithRetry(ctx, dlq, msg.Value)
 			metrics.DLQMessages.WithLabelValues(analyticsService, "unmarshal_error").Inc()
 			_ = retry.Do(ctx, 3, 200*time.Millisecond, func() error {
@@ -63,15 +100,45 @@ func RunAnalytics(ctx context.Context, cfg config.Config, logger *slog.Logger) e
 			continue
 		}
 
-		riskScore := ScoreEvent(event.Amount)
+		// ── ML scoring with rule-based fallback ──────────────────────────────
+		var riskScore int
+		var confidence float64
+		var explanation map[string]float64
+		var mlScored bool
+
+		if cfg.MLServiceURL != "" {
+			t0 := time.Now()
+			mlResp, mlErr := scoreWithML(ctx, cfg.MLServiceURL, event)
+			elapsed := time.Since(t0)
+
+			if mlErr != nil {
+				logger.Warn("ml service unavailable, falling back to rule-based scoring",
+					"error", mlErr, "user_id", event.UserID)
+				metrics.MLFallbacks.Inc()
+				riskScore = ScoreEvent(event.Amount)
+			} else {
+				riskScore = mlResp.RiskScore
+				confidence = mlResp.Confidence
+				explanation = mlResp.Explanation
+				mlScored = true
+				metrics.MLScoredEvents.Inc()
+				metrics.MLInferenceLatency.Observe(elapsed.Seconds())
+			}
+		} else {
+			riskScore = ScoreEvent(event.Amount)
+		}
+
 		metrics.RiskScores.Observe(float64(riskScore))
 
 		processed := models.ProcessedEvent{
-			EventID:   event.EventID,
-			UserID:    event.UserID,
-			EventType: event.EventType,
-			Amount:    event.Amount,
-			RiskScore: riskScore,
+			EventID:     event.EventID,
+			UserID:      event.UserID,
+			EventType:   event.EventType,
+			Amount:      event.Amount,
+			RiskScore:   riskScore,
+			Confidence:  confidence,
+			MLScored:    mlScored,
+			Explanation: explanation,
 		}
 
 		payload, err := json.Marshal(processed)
@@ -96,7 +163,12 @@ func RunAnalytics(ctx context.Context, cfg config.Config, logger *slog.Logger) e
 
 		metrics.EventsPublished.WithLabelValues(analyticsService, cfg.ProcessedTopic).Inc()
 		metrics.EventsProcessed.WithLabelValues(analyticsService).Inc()
-		logger.Info("processed event", "user_id", processed.UserID, "risk_score", processed.RiskScore)
+		logger.Info("processed event",
+			"user_id", processed.UserID,
+			"risk_score", processed.RiskScore,
+			"confidence", processed.Confidence,
+			"ml_scored", processed.MLScored,
+		)
 	}
 }
 

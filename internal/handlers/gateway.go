@@ -29,6 +29,11 @@ func (h *GatewayHandler) Health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GatewayHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, "/events", "405").Inc()
@@ -71,17 +76,24 @@ func (h *GatewayHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	metrics.HTTPRequestsTotal.WithLabelValues(r.Method, "/events", "201").Inc()
 	h.Logger.Info("published event", "user_id", event.UserID, "amount", event.Amount, "event_id", event.EventID)
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Event Published"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"event_id": event.EventID, "message": "Event Published"})
 }
 
 func (h *GatewayHandler) GetAlerts(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, "/alerts", "405").Inc()
 		return
 	}
 
-	rows, err := h.DB.QueryContext(r.Context(), `SELECT id, user_id, risk_score, message, created_at FROM alerts ORDER BY id DESC`)
+	rows, err := h.DB.QueryContext(r.Context(),
+		`SELECT id, event_id, user_id, risk_score, confidence, message, ml_scored, explanation, created_at
+		 FROM alerts ORDER BY id DESC LIMIT 50`)
 	if err != nil {
 		h.Logger.Error("alert query failed", "error", err)
 		http.Error(w, "failed to query alerts", http.StatusInternalServerError)
@@ -93,10 +105,16 @@ func (h *GatewayHandler) GetAlerts(w http.ResponseWriter, r *http.Request) {
 	alerts := make([]models.Alert, 0)
 	for rows.Next() {
 		var alert models.Alert
-		if err := rows.Scan(&alert.ID, &alert.UserID, &alert.RiskScore, &alert.Message, &alert.CreatedAt); err != nil {
+		var explanationJSON string
+		if err := rows.Scan(
+			&alert.ID, &alert.EventID, &alert.UserID,
+			&alert.RiskScore, &alert.Confidence, &alert.Message,
+			&alert.MLScored, &explanationJSON, &alert.CreatedAt,
+		); err != nil {
 			h.Logger.Warn("alert row scan failed", "error", err)
 			continue
 		}
+		_ = json.Unmarshal([]byte(explanationJSON), &alert.Explanation)
 		alerts = append(alerts, alert)
 	}
 
@@ -112,6 +130,11 @@ func (h *GatewayHandler) GetAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GatewayHandler) GetAlertByID(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, "/alert", "405").Inc()
@@ -127,9 +150,13 @@ func (h *GatewayHandler) GetAlertByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var alert models.Alert
+	var explanationJSON string
 	err = h.DB.QueryRowContext(r.Context(),
-		`SELECT id, user_id, risk_score, message, created_at FROM alerts WHERE id = $1`, id).
-		Scan(&alert.ID, &alert.UserID, &alert.RiskScore, &alert.Message, &alert.CreatedAt)
+		`SELECT id, event_id, user_id, risk_score, confidence, message, ml_scored, explanation, created_at
+		 FROM alerts WHERE id = $1`, id).
+		Scan(&alert.ID, &alert.EventID, &alert.UserID,
+			&alert.RiskScore, &alert.Confidence, &alert.Message,
+			&alert.MLScored, &explanationJSON, &alert.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "alert not found", http.StatusNotFound)
@@ -141,9 +168,16 @@ func (h *GatewayHandler) GetAlertByID(w http.ResponseWriter, r *http.Request) {
 		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, "/alert", "500").Inc()
 		return
 	}
+	_ = json.Unmarshal([]byte(explanationJSON), &alert.Explanation)
 
 	metrics.HTTPRequestsTotal.WithLabelValues(r.Method, "/alert", "200").Inc()
 	writeJSON(w, http.StatusOK, alert)
+}
+
+func setCORSHeaders(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

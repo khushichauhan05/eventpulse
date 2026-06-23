@@ -14,3 +14,8 @@ scrape_configs:
   - job_name: alert-service
     static_configs:
       - targets: ["alert-service:8082"]
+
+  - job_name: ml-service
+    static_configs:
+      - targets: ["ml-service:8000"]
+    metrics_path: /metrics
