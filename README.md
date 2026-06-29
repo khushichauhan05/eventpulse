@@ -744,7 +744,7 @@ Alerts stored in PostgreSQL and retrieved through the REST API.
 
 ```bash
 # Clone and navigate
-git clone https://github.com/apekshita0511/EventPulse.git
+git clone https://github.com/khushichauhan05/EventPulse.git
 cd EventPulse
 
 # Build and run
